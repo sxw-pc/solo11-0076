@@ -5,3 +5,10 @@ build/
 .venv/
 .pytest_cache/
 .DS_Store
+venv/
+node_modules/
+*.pyc
+.coverage
+.benchmarks/
+.env
+dist/
