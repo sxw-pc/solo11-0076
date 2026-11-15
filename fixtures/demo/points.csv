@@ -1,0 +1,8 @@
+id,x,y,label,elevation
+PT-001,10,10,bench,12.5
+PT-002,20,10,valve,8
+PT-003,2000,10,out-of-bounds,4
+PT-004,NaN,10,non-finite,2
+PT-005,30,10,,5
+PT-006,40,10,gate,tall
+PT-007,50,10,hydrant,

@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "run_label": "demo-local-topology",
+  "tolerance": {
+    "coordinate_epsilon": 0.000001,
+    "near_miss_distance": 2.0,
+    "sliver_ratio": 0.12
+  },
+  "crs": {
+    "name": "LOCAL_XY",
+    "type": "planar",
+    "bounds": {
+      "min_x": -100,
+      "min_y": -100,
+      "max_x": 1000,
+      "max_y": 1000
+    }
+  },
+  "layers": [
+    {
+      "id": "parcels",
+      "path": "parcels.geojson",
+      "format": "geojson",
+      "geometry_types": ["Polygon", "MultiPolygon"],
+      "id_field": "parcel_id",
+      "schema": {
+        "parcel_id": {"type": "string", "required": true},
+        "zone": {"type": "string", "required": true},
+        "area_hint": {"type": "number", "required": false}
+      },
+      "thresholds": {
+        "sliver_ratio": 0.12
+      }
+    },
+    {
+      "id": "roads",
+      "path": "roads.geojson",
+      "format": "geojson",
+      "geometry_types": ["LineString", "MultiLineString"],
+      "id_field": "road_id",
+      "schema": {
+        "road_id": {"type": "string", "required": true},
+        "class": {"type": "string", "required": true},
+        "lanes": {"type": "integer", "required": false}
+      },
+      "declared_crs": {
+        "name": "LOCAL_FEET",
+        "type": "planar"
+      },
+      "thresholds": {
+        "near_miss_distance": 2.0
+      }
+    },
+    {
+      "id": "points",
+      "path": "points.csv",
+      "format": "csv",
+      "geometry_types": ["Point"],
+      "id_field": "id",
+      "schema": {
+        "id": {"type": "string", "required": true},
+        "label": {"type": "string", "required": true},
+        "elevation": {"type": "number", "required": true}
+      }
+    },
+    {
+      "id": "empty",
+      "path": "empty.geojson",
+      "format": "geojson",
+      "geometry_types": ["Point"],
+      "id_field": "poi_id",
+      "schema": {
+        "poi_id": {"type": "string", "required": true},
+        "label": {"type": "string", "required": true}
+      }
+    }
+  ]
+}

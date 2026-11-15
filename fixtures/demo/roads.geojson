@@ -1,0 +1,117 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-001", "class": "local", "lanes": 2},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[700, 200], [720, 200], [720, 200], [740, 200]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-002", "class": "local", "lanes": 2},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[740, 200], [760, 200], [760, 220]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-003", "class": "local", "lanes": 2},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[760, 220], [740, 220], [720, 220]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-004", "class": "local", "lanes": 2},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[720, 220], [700, 220], [700, 200]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-005", "class": "service", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[700, 200], [680, 180]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-006", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[100, 300], [120, 320], [100, 320], [120, 300]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-007", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[120, 300], [120, 280], [100, 280], [100, 300]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-008", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[300, 300], [310, 300]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-009", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[312, 300], [322, 300]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-010", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[322, 300], [322, 320], [300, 320], [300, 300]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-011", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[500, 400], [520, 400], [520, 420]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-012", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[500, 400], [520, 400], [520, 420]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-013", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[600, 400]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"road_id": "RD-014", "class": "test", "lanes": 1},
+      "geometry": {
+        "type": "GeometryCollection",
+        "geometries": []
+      }
+    }
+  ]
+}

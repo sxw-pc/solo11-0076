@@ -1,0 +1,46 @@
+{
+  "label": "synthetic-local-vector-audit-v1",
+  "notes": "所有计数均由合成 fixture 和确定性规则产生，供端到端测试断言。",
+  "expect": {
+    "total_findings": 24,
+    "total_features": 33,
+    "severity_counts": {
+      "error": 15,
+      "warning": 8,
+      "info": 1
+    },
+    "findings_by_code": {
+      "COORD_NON_FINITE": 1,
+      "COORD_OUT_OF_BOUNDS": 1,
+      "DANGLING_ENDPOINT": 3,
+      "DUPLICATE_CONSECUTIVE_VERTEX": 1,
+      "DUPLICATE_FEATURE_ID": 1,
+      "DUPLICATE_GEOMETRY": 1,
+      "EMPTY_LAYER": 1,
+      "GEOM_UNSUPPORTED_TYPE": 1,
+      "LAYER_CRS_MISMATCH": 1,
+      "LINE_TOO_FEW_POINTS": 1,
+      "NEAR_MISS_ENDPOINT": 1,
+      "POLYGON_OVERLAP": 1,
+      "RING_NOT_CLOSED": 1,
+      "RING_TOO_FEW_POINTS": 1,
+      "SCHEMA_MISSING_FIELD": 3,
+      "SCHEMA_TYPE_MISMATCH": 2,
+      "SELF_INTERSECTION": 1,
+      "SLIVER_POLYGON": 1,
+      "ZERO_LENGTH_SEGMENT": 1
+    },
+    "findings_by_layer": {
+      "parcels": 7,
+      "roads": 11,
+      "points": 5,
+      "empty": 1
+    },
+    "layer_feature_counts": {
+      "parcels": 12,
+      "roads": 14,
+      "points": 7,
+      "empty": 0
+    }
+  }
+}
