@@ -34,7 +34,13 @@ class CliDemoTest(unittest.TestCase):
             self.assertEqual(report["summary"]["total_findings"], 24)
             self.assertEqual(report["summary"]["total_features"], 33)
             self.assertEqual(len(report["findings"]), 24)
-            self.assertEqual({item["rule_id"] for item in report["findings"]}, set(report["rules"][i]["rule_id"] for i in range(19)))
+            core_rules = {
+                item["rule_id"]
+                for item in report["rules"]
+                if not item["rule_id"].startswith("COVERAGE_")
+            }
+            self.assertEqual({item["rule_id"] for item in report["findings"]}, core_rules)
+            self.assertTrue(all(item["count"] == 0 for item in report["rules"] if item["rule_id"].startswith("COVERAGE_")))
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["verify", "--report", str(out / "report.json"), "--ledger", str(out / "audit.sqlite")]), 0)
             with contextlib.redirect_stdout(io.StringIO()):

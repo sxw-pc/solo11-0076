@@ -37,6 +37,9 @@ _RULE_ROWS = (
     ("NEAR_MISS_ENDPOINT", "info", "端点近接", "不同线的端点距离超过坐标容差但不超过近接容差。", "endpoint_a,endpoint_b,distance,tolerance"),
     ("LAYER_CRS_MISMATCH", "error", "图层 CRS 声明不一致", "图层 declared_crs 与全局 crs 名称或类型不一致。", "expected_crs,declared_crs"),
     ("EMPTY_LAYER", "warning", "空图层", "图层加载后不包含任何要素。", "feature_count"),
+    ("COVERAGE_GAP_INTERNAL", "error", "AOI 内部覆盖空缺", "AOI 内未受任一地块覆盖、且不触及 AOI 外边界的连通空缺，必须整改。", "mode,component_id,classification,required,area,bbox,cells,adjacent_feature_ids,aoi_geometry_digest,coverage_input_digest"),
+    ("COVERAGE_GAP_BOUNDARY", "warning", "AOI 边界覆盖缺口", "AOI 内未受任一地块覆盖、触及 AOI 外边界的条带；internal_only 下为待补边界项，all_uncovered 下必须整改。", "mode,component_id,classification,required,area,bbox,cells,adjacent_feature_ids,aoi_geometry_digest,coverage_input_digest"),
+    ("COVERAGE_INDETERMINATE", "error", "覆盖审计不可判定", "AOI 或地块包含斜边、自交、无效洞或非有限坐标，无法建立可信的正交覆盖结果。", "reason,feature_issues,mode"),
 )
 RULE_CATALOG: dict[str, RuleMeta] = {
     row[0]: RuleMeta(row[0], row[1], row[2], row[3], tuple(row[4].split(",")))

@@ -104,6 +104,32 @@ class LayerConfig:
             result["declared_crs"] = self.declared_crs.as_dict()
         return result
 @dataclass(frozen=True)
+class CoverageRequest:
+    """Explicit opt-in coverage-gap audit request.
+
+    The AOI is stored as immutable inline geometry so the request enters the
+    public configuration digest without re-reading any file.
+    """
+    layer_id: str
+    mode: str
+    aoi_geometry: Geometry
+    def as_public_dict(self) -> dict[str, Any]:
+        return {
+            "layer_id": self.layer_id,
+            "mode": self.mode,
+            "aoi_geometry": public_geometry(self.aoi_geometry),
+        }
+def public_geometry(geometry: Geometry) -> dict[str, Any]:
+    if geometry.kind == "Polygon":
+        coordinates: Any = [list(ring) for ring in geometry.coordinates]
+    elif geometry.kind == "MultiPolygon":
+        coordinates = [
+            [list(ring) for ring in polygon] for polygon in geometry.coordinates
+        ]
+    else:
+        coordinates = []
+    return {"type": geometry.kind, "coordinates": coordinates}
+@dataclass(frozen=True)
 class AuditConfig:
     path: Path
     config_digest: str
@@ -112,19 +138,24 @@ class AuditConfig:
     tolerance: Tolerance
     crs: CRS
     layers: tuple[LayerConfig, ...]
+    coverage: Optional[CoverageRequest] = None
     def as_public_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "schema_version": self.schema_version,
             "run_label": self.run_label,
             "tolerance": self.tolerance.as_dict(),
             "crs": self.crs.as_dict(),
             "layers": [layer.as_dict() for layer in self.layers],
         }
+        if self.coverage is not None:
+            result["coverage"] = self.coverage.as_public_dict()
+        return result
 @dataclass(frozen=True)
 class Geometry:
     kind: str
     coordinates: tuple[Any, ...]
     raw_type: Optional[str] = None
+
 @dataclass(frozen=True)
 class Feature:
     layer_id: str
@@ -206,6 +237,7 @@ class AuditResult:
     input_digest: str
     summary: dict[str, Any]
     limitations: tuple[str, ...]
+    coverage: Optional[dict[str, Any]] = None
 
 def geometry_type_counts(features: tuple[Feature, ...]) -> dict[str, int]:
     counts: dict[str, int] = {}

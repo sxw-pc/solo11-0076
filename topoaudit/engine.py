@@ -1,6 +1,7 @@
 """End-to-end audit execution independent of report and storage formats."""
 from __future__ import annotations
 from typing import Optional
+from .coverage import audit_coverage, request_from_config
 from .findings import layer_counts, rule_counts, severity_counts
 from .loaders import compute_input_digest, load_layers
 from .model import (
@@ -17,6 +18,8 @@ from .util import stable_round
 LIMITATIONS = (
     "仅处理二维欧氏几何；不进行坐标参考系转换或投影计算。",
     "压盖检测返回确定性布尔判定，不计算多边形重叠面积。",
+    "覆盖空缺审计为显式 opt-in，只接受边与坐标轴平行的 AOI 和地块；斜边、自交、无效洞或非有限坐标会被阻断为不可判定。",
+    "缺口面积按平面坐标单位计算，是同一坐标语义下的并集补集，不代表大地测量面积。",
     "近接与重复坐标判定依赖配置容差；容差变化会改变结果摘要。",
     "工具只读输入文件，不自动修复、合并或写回源数据。",
     "仅支持本地 GeoJSON 与 CSV，不连接远程服务或数据库。",
@@ -25,11 +28,12 @@ LIMITATIONS = (
 
 def run_audit(config: AuditConfig) -> AuditResult:
     layers = load_layers(config)
-    findings = run_rules(config, layers)
+    coverage = _run_coverage(config, layers)
+    findings = run_rules(config, layers, coverage)
     input_files = tuple(layer.input_file for layer in sorted(layers, key=lambda item: item.config.layer_id))
     input_digest = compute_input_digest(config.config_digest, input_files)
     stats = _build_layer_stats(layers, findings)
-    summary = _build_summary(layers, findings, input_files)
+    summary = _build_summary(layers, findings, input_files, coverage)
     return AuditResult(
         config=config,
         layers=layers,
@@ -39,7 +43,20 @@ def run_audit(config: AuditConfig) -> AuditResult:
         input_digest=input_digest,
         summary=summary,
         limitations=LIMITATIONS,
+        coverage=coverage,
     )
+def _run_coverage(config: AuditConfig, layers: tuple[LoadedLayer, ...]) -> Optional[dict]:
+    if config.coverage is None:
+        return None
+    layer = next(
+        (item for item in layers if item.config.layer_id == config.coverage.layer_id),
+        None,
+    )
+    tolerance = (
+        config.tolerance if layer is None else layer.config.effective_tolerance(config.tolerance)
+    )
+    request = request_from_config(config)
+    return audit_coverage(request, layers, tolerance.coordinate_epsilon)
 def _build_layer_stats(
     layers: tuple[LoadedLayer, ...], findings: tuple[Finding, ...]
 ) -> list[LayerStats]:
@@ -83,10 +100,11 @@ def _build_summary(
     layers: tuple[LoadedLayer, ...],
     findings: tuple[Finding, ...],
     input_files: tuple,
+    coverage: Optional[dict] = None,
 ) -> dict[str, object]:
     codes = rule_counts(findings)
     per_layer = layer_counts(findings)
-    return {
+    summary = {
         "total_layers": len(layers),
         "total_features": sum(len(layer.features) for layer in layers),
         "total_findings": len(findings),
@@ -98,4 +116,17 @@ def _build_summary(
             layer.config.layer_id: per_layer.get(layer.config.layer_id, 0)
             for layer in layers
         },
+    }
+    summary["coverage"] = _coverage_summary(coverage)
+    return summary
+def _coverage_summary(coverage: Optional[dict]) -> Optional[dict[str, object]]:
+    if coverage is None:
+        return None
+    return {
+        "mode": coverage["mode"],
+        "status": coverage["status"],
+        "gap_area": coverage["coverage"]["gap_area"],
+        "required_area": coverage["coverage"]["required_area"],
+        "required_component_count": coverage["coverage"]["required_component_count"],
+        "blocked_reason": None if coverage["blocked"] is None else coverage["blocked"]["reason"],
     }

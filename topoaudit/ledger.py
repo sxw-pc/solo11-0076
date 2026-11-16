@@ -64,6 +64,22 @@ SCHEMA_STATEMENTS = (
         evidence_fields_json TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS coverage (
+        result_digest TEXT PRIMARY KEY,
+        layer_id TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        status TEXT NOT NULL,
+        aoi_area REAL,
+        gap_area REAL,
+        required_area REAL,
+        required_component_count INTEGER,
+        boundary_component_count INTEGER,
+        blocked_reason TEXT,
+        document_json TEXT NOT NULL,
+        FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(result_digest, severity)",
     "CREATE INDEX IF NOT EXISTS idx_findings_layer ON findings(result_digest, layer_id)",
     "CREATE INDEX IF NOT EXISTS idx_findings_rule ON findings(result_digest, rule_id)",
@@ -157,6 +173,7 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
                         canonical_json(finding.get("evidence", {})),
                     ),
                 )
+            _write_coverage(connection, digest, report.get("coverage"))
             for item in report.get("input_files", []):
                 connection.execute(
                     """
@@ -197,3 +214,33 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
         raise LedgerError("TOPO-LED-004", f"写入台账失败: {exc}", str(path)) from exc
     finally:
         connection.close()
+
+def _write_coverage(
+    connection: sqlite3.Connection, digest: str, coverage: Any
+) -> None:
+    if coverage is None:
+        return
+    summary = coverage.get("coverage", {})
+    blocked = coverage.get("blocked")
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO coverage
+        (result_digest, layer_id, mode, status, aoi_area, gap_area,
+         required_area, required_component_count, boundary_component_count,
+         blocked_reason, document_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            digest,
+            str(coverage.get("layer_id", "")),
+            str(coverage.get("mode", "")),
+            str(coverage.get("status", "")),
+            summary.get("aoi_area"),
+            summary.get("gap_area"),
+            summary.get("required_area"),
+            summary.get("required_component_count"),
+            summary.get("boundary_component_count"),
+            None if blocked is None else str(blocked.get("reason", "")),
+            canonical_json(coverage),
+        ),
+    )

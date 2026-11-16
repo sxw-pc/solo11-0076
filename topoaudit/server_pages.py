@@ -79,10 +79,32 @@ def render_run(
     )
     body.append("</div>")
     body.extend(_layers(run.get("layers", [])))
+    body.extend(_coverage(run.get("summary", {})))
     body.extend(_findings(findings, filters))
     body.extend(_catalog(catalog))
     body.append(footer_text())
     return _page("运行复核", "\n".join(body))
+
+def _coverage(summary: dict[str, Any]) -> list[str]:
+    coverage = summary.get("coverage")
+    if coverage is None:
+        return []
+    lines = ["<h2>覆盖空缺审计</h2>", '<table><tbody>']
+    for label, value in (
+        ("状态", coverage.get("status", "")),
+        ("验收模式", coverage.get("mode", "")),
+        ("未覆盖面积", coverage.get("gap_area")),
+        ("必须整改面积", coverage.get("required_area")),
+        ("必须整改组件数", coverage.get("required_component_count")),
+        ("阻断原因", coverage.get("blocked_reason")),
+    ):
+        lines.append(
+            '<tr><th>{}</th><td class="mono">{}</td></tr>'.format(
+                _e(label), _e("—" if value is None else value)
+            )
+        )
+    lines.append("</tbody></table>")
+    return lines
 
 def render_rules(catalog: list[dict[str, Any]]) -> str:
     body = ['<h1>规则目录</h1><nav><a href="/">运行列表</a></nav>']

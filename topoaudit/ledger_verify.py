@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from .errors import LedgerError, ReportError
 from .ledger import connect_ledger
+from .ledger_query import coverage_table_exists
 from .report_json import compute_result_digest
 from .util import canonical_json
 @dataclass
@@ -40,6 +41,7 @@ def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -
         layer_count = _compare_layers(connection, digest, report, issues)
         finding_count = _compare_findings(connection, digest, report, issues)
         _compare_inputs(connection, digest, report, issues)
+        _compare_coverage(connection, digest, report, issues)
         _compare_rule_catalog(connection, report, issues)
         _compare_summary(report, issues)
     except sqlite3.Error as exc:
@@ -160,6 +162,36 @@ def _compare_inputs(
     for layer_id in sorted(ledger):
         if canonical_json(ledger[layer_id]) != canonical_json(reported[layer_id]):
             issues.append(f"图层 {layer_id} 的输入文件摘要不一致")
+def _compare_coverage(
+    connection: sqlite3.Connection,
+    digest: str,
+    report: dict[str, Any],
+    issues: list[str],
+) -> None:
+    if not coverage_table_exists(connection):
+        if report.get("coverage") is not None:
+            issues.append("报告包含 coverage，但台账没有覆盖审计表")
+        return
+    row = connection.execute(
+        "SELECT document_json FROM coverage WHERE result_digest = ?", (digest,)
+    ).fetchone()
+    reported = report.get("coverage")
+    if row is None and reported is None:
+        return
+    if row is None:
+        issues.append("报告包含 coverage，但台账缺少覆盖审计记录")
+        return
+    if reported is None:
+        issues.append("台账包含 coverage，但报告缺少覆盖审计记录")
+        return
+    try:
+        stored = json.loads(row["document_json"])
+    except json.JSONDecodeError:
+        issues.append("coverage.document_json 不是有效 JSON")
+        return
+    if canonical_json(stored) != canonical_json(reported):
+        issues.append("coverage 文档与台账不一致")
+
 def _compare_rule_catalog(
     connection: sqlite3.Connection, report: dict[str, Any], issues: list[str]
 ) -> None:

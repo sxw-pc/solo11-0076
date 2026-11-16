@@ -62,7 +62,8 @@ config_digest = SHA-256(canonical_json(public_config))
   - 排序后的 schema；
   - 排序后的规则开关；
   - 排序后的阈值覆盖；
-  - 可选的 `declared_crs`。
+  - 可选的 `declared_crs`；
+- 可选的 `coverage` 块：`layer_id`、`mode`、内联 AOI 的规范坐标。
 
 它**不**包含配置文件绝对路径、绝对解析路径、输入内容或输出目录。因此：
 
@@ -101,6 +102,7 @@ result_digest = SHA-256(canonical_json(report_without_result_digest))
 - 图层统计（要素数、几何类型计数、finding 数、级别计数、稳定 bbox）；
 - 规则快照（规则 ID、级别、标题、计数）；
 - 完整 findings 列表（含证据）；
+- 可选的 `coverage` 覆盖审计文档（模式、状态、面积、组件、contributors、阻断原因与覆盖输入摘要）；
 - 输入文件摘要；
 - 限制说明。
 
@@ -170,6 +172,7 @@ severity_rank, rule_id, layer_id, COALESCE(feature_id, ''), finding_id
 - 报告和 `input_digest` 中的输入文件按 `layer_id` 排序。
 - SQLite 中查询图层时按 `layer_id` 排序。
 - `summary` 对象在 JSON 文件中按键排序。
+- 覆盖空缺组件按 bbox（下、左、上、右）稳定排序后编号 `G001`、`G002`……，与地块输入顺序无关；`contributors` 按 `source_index` 排序。
 
 ### 5.3 输入源顺序
 
@@ -208,6 +211,7 @@ severity_rank, rule_id, layer_id, COALESCE(feature_id, ''), finding_id
 - 同一 `result_digest` 的不同报告（若通过摘要自校验，仅可能是刻意构造的摘要碰撞/伪造）不会覆盖既有行；
 - 新摘要是一组新运行，不会与旧运行混行；
 - `rule_catalog` 是全局表，会保持为当前代码目录的快照。
+- `coverage` 表以 `result_digest` 为主键，只在配置了 `coverage` 块时写入；旧台账缺少该表时，`get_coverage` 返回 `null`，非覆盖运行的 `verify` 仍然通过。
 
 ## 7. `verify` 的核对范围
 

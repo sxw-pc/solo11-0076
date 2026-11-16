@@ -141,6 +141,26 @@ def get_input_files(path: str | Path, digest: str) -> list[dict[str, Any]]:
     finally:
         connection.close()
 
+def get_coverage(path: str | Path, digest: str) -> Optional[dict[str, Any]]:
+    """Return the stored coverage document for a run, if the run requested it."""
+    connection = connect_ledger(path, read_only=True)
+    try:
+        if not coverage_table_exists(connection):
+            return None
+        row = connection.execute(
+            "SELECT document_json FROM coverage WHERE result_digest = ?", (digest,)
+        ).fetchone()
+        return None if row is None else json.loads(row["document_json"])
+    finally:
+        connection.close()
+
+def coverage_table_exists(connection: Any) -> bool:
+    """True when the optional coverage table exists (older ledgers lack it)."""
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'coverage'"
+    ).fetchone()
+    return row is not None
+
 def get_rule_catalog(path: str | Path) -> list[dict[str, Any]]:
     connection = connect_ledger(path, read_only=True)
     try:

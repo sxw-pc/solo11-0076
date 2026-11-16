@@ -1,6 +1,6 @@
 # 规则目录与语义
 
-`topoaudit` 固定提供 19 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
+`topoaudit` 固定提供 19 条核心规则，另有 3 条显式 opt-in 的覆盖空缺规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
 
 ## 1. 通用语义
 
@@ -36,6 +36,9 @@
 | 17 | `NEAR_MISS_ENDPOINT` | info | 不同要素端点距离大于坐标容差且不超过近接容差 | `endpoint_a`、`endpoint_b`、`distance`、`tolerance` |
 | 18 | `LAYER_CRS_MISMATCH` | error | 图层 `declared_crs` 的名称或类型与全局 `crs` 不一致 | `expected_crs`、`declared_crs` |
 | 19 | `EMPTY_LAYER` | warning | 图层加载后要素数为 0 | `feature_count` |
+| 20 | `COVERAGE_GAP_INTERNAL` | error | opt-in 覆盖审计：AOI 内完全被地块包围的未覆盖组件 | `mode`、`component_id`、`area`、`bbox`、`cells`、`adjacent_feature_ids` |
+| 21 | `COVERAGE_GAP_BOUNDARY` | warning | opt-in 覆盖审计：触及 AOI 外边界的未覆盖条带 | 同上，另含 `required` |
+| 22 | `COVERAGE_INDETERMINATE` | error | opt-in 覆盖审计：AOI 或地块几何不受支持，无法判定 | `reason`、`feature_issues`、`mode` |
 
 ## 3. 逐条说明
 
@@ -178,9 +181,33 @@ coordinate_epsilon < distance <= near_miss_distance
 
 图层成功加载但要素数为 0 时报告。空的 FeatureCollection 是合法输入，不是加载错误。空 CSV（只有表头）同样产生该 finding。
 
+### 3.6 覆盖空缺规则（显式 opt-in）
+
+只有配置包含 `coverage` 块时，这三条规则才参与运行；否则它们计数恒为 0。
+
+**`COVERAGE_GAP_INTERNAL`**
+
+在 AOI 与地块并集的差集中，取不触及 AOI 外边界的连通未覆盖组件。每个组件一条 finding，证据含面积、bbox、构成网格单元、相邻地块 ID、AOI 几何摘要与覆盖输入摘要。AOI 自身的洞永远不算缺口。
+
+**`COVERAGE_GAP_BOUNDARY`**
+
+同样来自差集，但组件至少有一条边落在 AOI 外边界上。`internal_only` 模式下这些组件的 `required=false`，仅作为“待补边界项”；`all_uncovered` 模式下 `required=true`。finding 级别固定为 warning，因而不会被误读为“内部空洞已整改”。`boundary_area` / `boundary_component_count` 始终按几何分类统计，不随验收模式归零。
+
+**`COVERAGE_INDETERMINATE`**
+
+AOI 不是 `Polygon`/`MultiPolygon`、坐标非有限、边非轴平行、环自交、洞越界或互相嵌套、MultiPolygon 成员重叠，或地块本身不可判定时报告。此时所有面积字段为 `null`，绝不退化为 bbox 近似。逐要素原因进入 `feature_issues`。
+
+**共同语义**
+
+- 覆盖面积来自地块**并集**；重叠地块不会重复计入，也不会用压盖面积抵消另一处缺口。
+- 相切共边、共点、零面积线缝不产生正面积缺口。
+- 组件按 bbox 稳定排序，编号 `G001`、`G002`……；地块输入顺序变化不改变编号、面积与顺序。
+- 结果同时写入 JSON/Markdown/HTML 报告的 `coverage` 区块和台账 `coverage` 表（含 `mode`、`status`、`gap_area`、`required_area`、阻断原因与完整文档）。
+- 原有 `POLYGON_OVERLAP` finding 继续独立存在；覆盖为 0 不代表地块之间没有压盖。
+
 ## 4. 演示 fixture 覆盖
 
-`fixtures/demo` 的预期 finding 计数为 24，覆盖全部 19 条规则：
+`fixtures/demo` 的预期 finding 计数为 24，覆盖全部 19 条核心规则（覆盖空缺规则因未配置 `coverage` 计为 0）：
 
 | 规则 | 计数 | 规则 | 计数 | 规则 | 计数 |
 | --- | ---: | --- | ---: | --- | ---: |
@@ -201,5 +228,6 @@ coordinate_epsilon < distance <= near_miss_distance
 - 不检查跨图层拓扑、跨图层重复、跨图层压盖。
 - 不检查 Z/M 值、坐标精度来源、拓扑规则库或 OGC 简单要素的全部合法性问题。
 - 压盖是保守布尔判定，不计算面积；狭长是面积/周长启发式。
+- 覆盖空缺面积是平面坐标语义下的并集补集，只接受正交几何；它不表达大地测量面积或法定面积。
 - 重复几何以配置容差量化，容差变化可能改变“重复”的范围和 finding ID。
 - 规则禁用后不会隐式改变其他规则的判定；关闭规则应理解为“接受该类风险”，而不是“修复数据”。

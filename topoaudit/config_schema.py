@@ -9,8 +9,10 @@ from .model import (
     SUPPORTED_SCHEMA_TYPES,
     Bounds,
     CRS,
+    CoverageRequest,
     DeclaredCRS,
     FieldSpec,
+    Geometry,
     LayerConfig,
     Tolerance,
 )
@@ -201,3 +203,85 @@ def _finite_number(value: Any, path: str) -> float:
     if not math.isfinite(number):
         raise ConfigError("TOPO-CFG-006", "数字必须是有限值", path)
     return number
+
+COVERAGE_MODES = ("internal_only", "all_uncovered")
+
+def parse_coverage(
+    raw: Any, path: str, base_dir: Path, layer_ids: set[str]
+) -> Optional[CoverageRequest]:
+    """Parse the optional, explicit ``coverage`` block.
+
+    The AOI is an inline GeoJSON geometry (never a bbox), so the accepted
+    shape is unambiguous and the request can be hashed deterministically.
+    """
+    if raw is None:
+        return None
+    obj = _object(raw, path, {"layer_id", "mode", "aoi"})
+    layer_id = _nonempty_string(_require(obj, "layer_id", path), f"{path}.layer_id")
+    if layer_id not in layer_ids:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            f"coverage.layer_id 不存在于 layers: {layer_id}",
+            f"{path}.layer_id",
+        )
+    mode = _string(_require(obj, "mode", path), f"{path}.mode")
+    if mode not in COVERAGE_MODES:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "coverage.mode 只能是 internal_only 或 all_uncovered",
+            f"{path}.mode",
+        )
+    aoi = _parse_coverage_aoi(_require(obj, "aoi", path), f"{path}.aoi")
+    return CoverageRequest(layer_id=layer_id, mode=mode, aoi_geometry=aoi)
+
+def _parse_coverage_aoi(raw: Any, path: str) -> Geometry:
+    obj = _object(raw, path, {"type", "coordinates"})
+    kind = _string(_require(obj, "type", path), f"{path}.type")
+    if kind not in ("Polygon", "MultiPolygon"):
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "coverage.aoi.type 只能是 Polygon 或 MultiPolygon",
+            f"{path}.type",
+        )
+    coordinates = _require(obj, "coordinates", path)
+    parsed = _coverage_rings(kind, coordinates, f"{path}.coordinates")
+    return Geometry(kind=kind, coordinates=parsed, raw_type=kind)
+
+def _coverage_rings(kind: str, raw: Any, path: str) -> tuple[Any, ...]:
+    """Parse inline AOI rings without depending on the file loaders."""
+    if not isinstance(raw, list) or not raw:
+        raise ConfigError("TOPO-CFG-006", "coverage.aoi.coordinates 必须是非空数组", path)
+    if kind == "Polygon":
+        return (_coverage_ring(raw[0], f"{path}[0]"),) + tuple(
+            _coverage_ring(ring, f"{path}[{index}]")
+            for index, ring in enumerate(raw[1:], start=1)
+        )
+    return tuple(
+        _coverage_rings("Polygon", polygon, f"{path}[{index}]")
+        for index, polygon in enumerate(raw)
+    )
+
+def _coverage_ring(raw: Any, path: str) -> tuple[tuple[float, float], ...]:
+    if not isinstance(raw, list) or not raw:
+        raise ConfigError("TOPO-CFG-006", "coverage.aoi 环必须是非空坐标数组", path)
+    points = []
+    for index, point in enumerate(raw):
+        if (
+            not isinstance(point, list)
+            or len(point) != 2
+            or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in point)
+        ):
+            raise ConfigError(
+                "TOPO-CFG-006",
+                "coverage.aoi 坐标必须是二元数字数组",
+                f"{path}[{index}]",
+            )
+        x, y = float(point[0]), float(point[1])
+        if not (math.isfinite(x) and math.isfinite(y)):
+            raise ConfigError(
+                "TOPO-CFG-006",
+                "coverage.aoi 坐标必须是有限值",
+                f"{path}[{index}]",
+            )
+        points.append((x, y))
+    return tuple(points)

@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "run_label": "coverage-slant",
+  "tolerance": {
+    "coordinate_epsilon": 1e-06
+  },
+  "crs": {
+    "name": "LOCAL_XY",
+    "type": "planar",
+    "bounds": {
+      "min_x": -10,
+      "min_y": -10,
+      "max_x": 20,
+      "max_y": 20
+    }
+  },
+  "layers": [
+    {
+      "id": "parcels",
+      "path": "slanted.geojson",
+      "format": "geojson",
+      "geometry_types": [
+        "Polygon",
+        "MultiPolygon"
+      ],
+      "id_field": "id",
+      "schema": {
+        "id": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  ],
+  "coverage": {
+    "layer_id": "parcels",
+    "mode": "all_uncovered",
+    "aoi": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            10,
+            0
+          ],
+          [
+            10,
+            10
+          ],
+          [
+            0,
+            10
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      ]
+    }
+  }
+}

@@ -24,7 +24,7 @@ class ReportTest(unittest.TestCase):
             "summary", "layers", "rules", "findings", "input_files", "limitations",
         ):
             self.assertIn(key, self.report)
-        self.assertEqual(len(self.report["rules"]), 19)
+        self.assertEqual(len(self.report["rules"]), 22)
         self.assertEqual(len(self.report["findings"]), 24)
         self.assertEqual(len(self.report["result_digest"]), 64)
         self.assertEqual(compute_result_digest(self.report), self.report["result_digest"])

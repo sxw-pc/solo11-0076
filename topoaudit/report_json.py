@@ -31,6 +31,7 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "findings": [item.as_dict() for item in result.findings],
         "input_files": [item.as_dict() for item in result.input_files],
         "limitations": list(result.limitations),
+        "coverage": result.coverage,
     }
     digest = compute_result_digest(payload)
     return {
@@ -45,6 +46,7 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "findings": payload["findings"],
         "input_files": payload["input_files"],
         "limitations": payload["limitations"],
+        "coverage": payload["coverage"],
     }
 
 def compute_result_digest(report: dict[str, Any]) -> str:

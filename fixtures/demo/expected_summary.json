@@ -28,7 +28,10 @@
       "SCHEMA_TYPE_MISMATCH": 2,
       "SELF_INTERSECTION": 1,
       "SLIVER_POLYGON": 1,
-      "ZERO_LENGTH_SEGMENT": 1
+      "ZERO_LENGTH_SEGMENT": 1,
+      "COVERAGE_GAP_INTERNAL": 0,
+      "COVERAGE_GAP_BOUNDARY": 0,
+      "COVERAGE_INDETERMINATE": 0
     },
     "findings_by_layer": {
       "parcels": 7,

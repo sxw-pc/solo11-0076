@@ -28,6 +28,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.extend(_render_layers(report.get("layers", [])))
     lines.extend(_render_rules(report.get("rules", [])))
+    lines.extend(_render_coverage(report.get("coverage")))
     lines.extend(_render_findings(report.get("findings", [])))
     lines.extend(_render_inputs(report.get("input_files", [])))
     lines.append("## 限制说明")
@@ -79,6 +80,73 @@ def _render_rules(rules: list[dict[str, Any]]) -> list[str]:
         )
     lines.append("")
     return lines
+
+def _render_coverage(coverage: Any) -> list[str]:
+    lines = ["## 覆盖空缺审计", ""]
+    if coverage is None:
+        lines.append("本次运行未启用覆盖空缺审计（配置中无 `coverage` 块）。")
+        lines.append("")
+        return lines
+    summary = coverage.get("coverage", {})
+    aoi = coverage.get("aoi", {})
+    lines.append("| 项目 | 值 |")
+    lines.append("| --- | --- |")
+    lines.append(f"| 状态 | {_cell(coverage.get('status', ''))} |")
+    lines.append(f"| 验收模式 | {_cell(coverage.get('mode', ''))} |")
+    lines.append(f"| 被审计图层 | {_cell(coverage.get('layer_id', ''))} |")
+    lines.append(f"| AOI 类型 / 面积 | {_cell(aoi.get('geometry_type', ''))} / {_fmt(summary.get('aoi_area'))} |")
+    lines.append(f"| AOI 洞数 | {aoi.get('hole_count', 0)} |")
+    lines.append(f"| 已覆盖面积 | {_fmt(summary.get('covered_area'))} |")
+    lines.append(f"| 未覆盖面积 | {_fmt(summary.get('gap_area'))} |")
+    lines.append(f"| 必须整改面积 | {_fmt(summary.get('required_area'))} |")
+    lines.append(f"| 空缺组件数 / 必须整改 | {_fmt(summary.get('gap_component_count'))} / {_fmt(summary.get('required_component_count'))} |")
+    lines.append(f"| 边界待补面积 | {_fmt(summary.get('boundary_area'))} |")
+    lines.append(f"| 未覆盖率 | {_fmt(summary.get('uncovered_percent'))}% |")
+    lines.append(f"| 覆盖输入摘要 | `{coverage.get('input_digest', '')}` |")
+    lines.append("")
+    blocked = coverage.get("blocked")
+    if blocked:
+        lines.append(f"**不可判定原因**：`{_cell(blocked.get('reason', ''))}`")
+        lines.append("")
+        issues = blocked.get("feature_issues") or []
+        if issues:
+            lines.append("| 要素 | 源索引 | 部件 | 几何类型 | 原因 |")
+            lines.append("| --- | ---: | --- | --- | --- |")
+            for issue in issues:
+                lines.append(
+                    "| {feature} | {index} | {component} | {kind} | {reason} |".format(
+                        feature=_cell(issue.get("feature_id", "")),
+                        index=issue.get("source_index", ""),
+                        component=_cell(issue.get("component_index", "—")),
+                        kind=_cell(issue.get("geometry_type", "")),
+                        reason=_cell(issue.get("reason", "")),
+                    )
+                )
+            lines.append("")
+        return lines
+    components = coverage.get("components", [])
+    if not components:
+        lines.append("AOI 已被地块并集完整覆盖，无空缺组件。")
+        lines.append("")
+        return lines
+    lines.append("| 组件 | 分类 | 必须整改 | 面积 | bbox | 相邻地块 |")
+    lines.append("| --- | --- | --- | ---: | --- | --- |")
+    for component in components:
+        lines.append(
+            "| {cid} | {cls} | {required} | {area} | {bbox} | {adjacent} |".format(
+                cid=_cell(component.get("component_id", "")),
+                cls=_cell(component.get("classification", "")),
+                required="是" if component.get("required") else "否",
+                area=_fmt(component.get("area")),
+                bbox=_cell(", ".join(str(v) for v in component.get("bbox", []))),
+                adjacent=_cell(", ".join(component.get("adjacent_feature_ids", [])) or "—"),
+            )
+        )
+    lines.append("")
+    return lines
+
+def _fmt(value: Any) -> str:
+    return "—" if value is None else str(value)
 
 def _render_findings(findings: list[dict[str, Any]]) -> list[str]:
     lines = [f"## Findings（{len(findings)}）", ""]

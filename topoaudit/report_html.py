@@ -66,6 +66,7 @@ def render_html(report: dict[str, Any]) -> str:
     ]
     parts.extend(_layers_html(report.get("layers", [])))
     parts.extend(_rules_html(report.get("rules", [])))
+    parts.extend(_coverage_html(report.get("coverage")))
     parts.extend(_findings_html(report.get("findings", [])))
     parts.extend(_inputs_html(report.get("input_files", [])))
     parts.append("<h2>限制说明</h2><ul>")
@@ -119,6 +120,76 @@ def _rules_html(rules: list[dict[str, Any]]) -> list[str]:
                 _e(rule.get("count", 0)),
             )
         )
+    lines.append("</tbody></table>")
+    return lines
+
+def _coverage_html(coverage: Any) -> list[str]:
+    lines = ["<h2>覆盖空缺审计</h2>"]
+    if coverage is None:
+        return lines + ["<p>本次运行未启用覆盖空缺审计（配置中无 <code>coverage</code> 块）。</p>"]
+    summary = coverage.get("coverage", {})
+    aoi = coverage.get("aoi", {})
+    lines.append('<div class="card"><table><tbody>')
+    for label, value in (
+        ("状态", coverage.get("status", "")),
+        ("验收模式", coverage.get("mode", "")),
+        ("被审计图层", coverage.get("layer_id", "")),
+        ("AOI 类型", aoi.get("geometry_type", "")),
+        ("AOI 面积", summary.get("aoi_area")),
+        ("AOI 洞数", aoi.get("hole_count", 0)),
+        ("已覆盖面积", summary.get("covered_area")),
+        ("未覆盖面积", summary.get("gap_area")),
+        ("必须整改面积", summary.get("required_area")),
+        ("空缺组件数", summary.get("gap_component_count")),
+        ("必须整改组件数", summary.get("required_component_count")),
+        ("边界待补面积", summary.get("boundary_area")),
+        ("未覆盖率(%)", summary.get("uncovered_percent")),
+        ("覆盖输入摘要", coverage.get("input_digest", "")),
+    ):
+        lines.append(
+            '<tr><th>{}</th><td class="mono">{}</td></tr>'.format(
+                _e(label), _e("—" if value is None else value)
+            )
+        )
+    lines.append("</tbody></table></div>")
+    blocked = coverage.get("blocked")
+    if blocked:
+        lines.append(
+            '<p class="error">不可判定原因: <code>{}</code></p>'.format(
+                _e(blocked.get("reason", ""))
+            )
+        )
+        issues = blocked.get("feature_issues") or []
+        if issues:
+            lines.append("<table><thead><tr><th>要素</th><th>源索引</th><th>部件</th>"
+                         "<th>几何类型</th><th>原因</th></tr></thead><tbody>")
+            for issue in issues:
+                lines.append(
+                    "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                        _e(issue.get("feature_id", "")),
+                        _e(issue.get("source_index", "")),
+                        _e(issue.get("component_index", "—")),
+                        _e(issue.get("geometry_type", "")),
+                        _e(issue.get("reason", "")),
+                    )
+                )
+            lines.append("</tbody></table>")
+        return lines
+    components = coverage.get("components", [])
+    if not components:
+        return lines + ["<p>AOI 已被地块并集完整覆盖，无空缺组件。</p>"]
+    lines.append("<table><thead><tr><th>组件</th><th>分类</th><th>必须整改</th>"
+                 "<th>面积</th><th>bbox</th><th>相邻地块</th></tr></thead><tbody>")
+    for component in components:
+        lines.append("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td>"
+                     "<td class=\"mono\">{}</td><td>{}</td></tr>".format(
+                         _e(component.get("component_id", "")),
+                         _e(component.get("classification", "")),
+                         "是" if component.get("required") else "否",
+                         _e(component.get("area")),
+                         _e(", ".join(str(value) for value in component.get("bbox", []))),
+                         _e(", ".join(component.get("adjacent_feature_ids", [])) or "—"),
+                     ))
     lines.append("</tbody></table>")
     return lines
 

@@ -1,0 +1,60 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "P-COMBO"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              0,
+              0
+            ],
+            [
+              10,
+              0
+            ],
+            [
+              10,
+              8
+            ],
+            [
+              0,
+              8
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          [
+            [
+              2,
+              2
+            ],
+            [
+              4,
+              2
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              2,
+              4
+            ],
+            [
+              2,
+              2
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

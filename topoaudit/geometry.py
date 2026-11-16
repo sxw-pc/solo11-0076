@@ -191,3 +191,106 @@ def polygon_components(geometry: Any) -> list[tuple[str, Polygon]]:
             for index, polygon in enumerate(geometry.coordinates)
         ]
     return []
+
+# --- Orthogonal coverage support -------------------------------------------------
+#
+# These helpers are used only by the explicitly opted-in coverage audit.  They
+# validate and decompose rings but never mutate source coordinates.
+
+def coverage_ring_issue(ring: Sequence[Point], epsilon: float) -> Optional[str]:
+    """Return a stable reason code when a ring is not a clean axis-aligned loop."""
+    if len(ring) < 4:
+        return "ring_too_few_points"
+    if not all(is_finite_point(point) for point in ring):
+        return "non_finite_coordinate"
+    if not ring_closed(ring, epsilon):
+        return "ring_not_closed"
+    body = list(ring[:-1])
+    for index in range(len(body)):
+        a, b = body[index], body[(index + 1) % len(body)]
+        if points_close(a, b, epsilon):
+            return "zero_length_segment"
+        if abs(float(a[0]) - float(b[0])) > epsilon and abs(float(a[1]) - float(b[1])) > epsilon:
+            return "non_axis_aligned_segment"
+    if line_self_intersections(ring, True, epsilon):
+        return "self_intersection"
+    if abs(ring_signed_area(ring)) <= epsilon * epsilon:
+        return "zero_area_ring"
+    return None
+
+def _rings_intersect(left: Sequence[Point], right: Sequence[Point], epsilon: float) -> bool:
+    return any(
+        segments_intersect(left[i], left[i + 1], right[j], right[j + 1], epsilon)
+        for i in range(len(left) - 1)
+        for j in range(len(right) - 1)
+    )
+
+def coverage_polygon_issue(polygon: Sequence[Sequence[Point]], epsilon: float) -> Optional[str]:
+    """Validate a polygon as a clean orthogonal shell plus disjoint holes.
+
+    Returns ``None`` when supported, or a stable reason code.  Self-intersection,
+    touching or nested rings, holes outside the shell and non-finite coordinates
+    are rejected rather than silently repaired.
+    """
+    if not polygon:
+        return "empty_polygon"
+    for ring in polygon:
+        issue = coverage_ring_issue(ring, epsilon)
+        if issue is not None:
+            return issue
+    shell = polygon[0]
+    for hole_index, hole in enumerate(polygon[1:], start=1):
+        if _rings_intersect(shell, hole, epsilon):
+            return "hole_touches_or_crosses_shell"
+        if any(point_location(shell, point, epsilon) != "inside" for point in hole[:-1]):
+            return "hole_outside_shell"
+        for other in polygon[hole_index + 1:]:
+            if _rings_intersect(hole, other, epsilon):
+                return "nested_or_overlapping_holes"
+            if any(point_location(other, point, epsilon) != "outside" for point in hole[:-1]):
+                return "nested_or_overlapping_holes"
+            if any(point_location(hole, point, epsilon) != "outside" for point in other[:-1]):
+                return "nested_or_overlapping_holes"
+    return None
+
+def ring_axis_edges(ring: Sequence[Point], epsilon: float) -> list[tuple[float, float, float, float]]:
+    """Split an orthogonal closed ring into open axis-parallel strips.
+
+    Each strip is ``(min_x, min_y, max_x, max_y)`` with one zero-sized dimension.
+    Orientation is ignored and the closing point is never emitted twice.
+    """
+    edges: list[tuple[float, float, float, float]] = []
+    body = list(ring[:-1]) if ring and points_close(ring[0], ring[-1], epsilon) else list(ring)
+    for index in range(len(body)):
+        a, b = body[index], body[(index + 1) % len(body)]
+        if points_close(a, b, epsilon):
+            continue
+        x1, y1, x2, y2 = float(a[0]), float(a[1]), float(b[0]), float(b[1])
+        edges.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
+    return edges
+
+def polygon_boundary_edges(polygon: Sequence[Sequence[Point]], epsilon: float) -> list[tuple[float, float, float, float]]:
+    return [edge for ring in polygon for edge in ring_axis_edges(ring, epsilon)]
+
+def edge_lies_on_ring(edge: tuple[float, float, float, float], ring: Sequence[Point], epsilon: float) -> bool:
+    """True when a positive-length axis-aligned strip is contained in a ring edge."""
+    x0, y0, x1, y1 = edge
+    for sx0, sy0, sx1, sy1 in ring_axis_edges(ring, epsilon):
+        if (y1 - y0) <= epsilon and (sy1 - sy0) <= epsilon:
+            if abs(y0 - sy0) <= epsilon and x0 >= sx0 - epsilon and x1 <= sx1 + epsilon:
+                return True
+        elif (x1 - x0) <= epsilon and (sx1 - sx0) <= epsilon:
+            if abs(x0 - sx0) <= epsilon and y0 >= sy0 - epsilon and y1 <= sy1 + epsilon:
+                return True
+    return False
+
+def coverage_geometry_issue(geometry: Any, epsilon: float) -> Optional[str]:
+    """Validate every polygon part of a Polygon/MultiPolygon geometry."""
+    parts = polygon_components(geometry)
+    if not parts:
+        return "not_a_polygon"
+    for _, polygon in parts:
+        issue = coverage_polygon_issue(polygon, epsilon)
+        if issue is not None:
+            return issue
+    return None

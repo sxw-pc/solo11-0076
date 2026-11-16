@@ -1,12 +1,18 @@
 """Rule-engine entry point and layer-level checks."""
 from __future__ import annotations
+from typing import Any, Optional
 from .findings import FindingCollector, sort_findings
 from .model import AuditConfig, Finding, LoadedLayer
+from .rule_coverage import check_coverage
 from .rule_geometry import check_geometry
 from .rule_schema import check_schema
 from .rule_topology import check_layer_topology
 
-def run_rules(config: AuditConfig, layers: tuple[LoadedLayer, ...]) -> tuple[Finding, ...]:
+def run_rules(
+    config: AuditConfig,
+    layers: tuple[LoadedLayer, ...],
+    coverage_document: Optional[dict[str, Any]] = None,
+) -> tuple[Finding, ...]:
     collector = FindingCollector()
     for layer in layers:
         tolerance = layer.config.effective_tolerance(config.tolerance)
@@ -22,6 +28,7 @@ def run_rules(config: AuditConfig, layers: tuple[LoadedLayer, ...]) -> tuple[Fin
             check_schema(feature, layer.config, collector)
             check_geometry(feature, layer.config, config, tolerance, collector)
         check_layer_topology(layer.features, layer.config, tolerance, collector)
+    check_coverage(config, layers, collector, coverage_document)
     return tuple(sort_findings(collector.findings()))
 
 def _check_layer_crs(
