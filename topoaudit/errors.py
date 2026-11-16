@@ -46,3 +46,9 @@ class ServerError(AuditError):
     def __init__(self, code: str, message: str, path: Optional[str] = None) -> None:
         self.code = code
         super().__init__(message, path)
+
+class RepairError(AuditError):
+    """A repair rehearsal request is malformed or references unknown data."""
+    def __init__(self, code: str, message: str, path: Optional[str] = None) -> None:
+        self.code = code
+        super().__init__(message, path)

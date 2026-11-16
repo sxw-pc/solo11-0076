@@ -38,6 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
     query_parser.add_argument("--layer")
     query_parser.add_argument("--rule")
     query_parser.add_argument("--json", action="store_true", help="输出 JSON")
+    rehearse_parser = sub.add_parser(
+        "rehearse", help="只读预演端点吸附修复，不写回源数据"
+    )
+    rehearse_parser.add_argument("--config", required=True, help="JSON 审计配置路径")
+    rehearse_parser.add_argument(
+        "--request", required=True, help="端点修复请求 JSON 路径"
+    )
+    rehearse_parser.add_argument("--out", required=True, help="预演报告输出路径")
     return parser
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -57,6 +65,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return _serve(args)
         if args.command == "query":
             return _query(args)
+        if args.command == "rehearse":
+            return _rehearse(args)
     except AuditError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -151,5 +161,27 @@ def _query(args: argparse.Namespace) -> int:
             f"{finding['finding_id']}"
         )
     return 0
+def _rehearse(args: argparse.Namespace) -> int:
+    from .pipeline import execute_rehearsal
+
+    report = execute_rehearsal(args.config, args.request, args.out)
+    rehearsal = report["rehearsal"]
+    feasible = sum(1 for item in rehearsal["candidates"] if item["feasible"])
+    print(
+        "端点修复预演（只读，源数据未改动）\n"
+        f"layer_id         : {rehearsal['layer_id']}\n"
+        f"status           : {rehearsal['status']}\n"
+        f"candidates       : {rehearsal['candidate_count']} "
+        f"(feasible={feasible})\n"
+        f"pareto_front     : {len(rehearsal['pareto_front'])}\n"
+        f"rehearsal_digest : {report['rehearsal_digest']}\n"
+        f"report           : {args.out}"
+    )
+    if rehearsal["review_required"]:
+        for reason in rehearsal["review_reasons"]:
+            print(f"review           : {reason}")
+    return 0
+
+
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

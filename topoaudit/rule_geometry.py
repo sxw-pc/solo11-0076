@@ -1,6 +1,5 @@
 """Per-feature coordinate, structural geometry, and sliver checks."""
 from __future__ import annotations
-import math
 from typing import Any
 from .findings import FindingCollector
 from .geometry import (
@@ -17,8 +16,15 @@ from .geometry import (
     valid_polygon,
     zero_length_segments,
 )
-from .model import AuditConfig, CRS, Feature, LayerConfig, Tolerance
+from .geometry_edits import apply_endpoint_moves, move_line_endpoints
+from .model import AuditConfig, Feature, LayerConfig, Tolerance
 from .util import stable_round
+
+__all__ = [
+    "apply_endpoint_moves",
+    "check_geometry",
+    "move_line_endpoints",
+]
 
 def check_geometry(
     feature: Feature,

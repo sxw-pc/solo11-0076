@@ -1,11 +1,15 @@
 """Shared run pipeline used by the CLI and the offline demo."""
 from __future__ import annotations
+import json
 from pathlib import Path
 from typing import Any
 from .config import load_config
 from .engine import run_audit
 from .errors import ReportError
 from .ledger import write_report
+from .loaders import load_layers
+from .repair import parse_repair_request, rehearse_endpoint_repair
+from .repair_report import build_rehearsal_report, write_rehearsal_report
 from .report_html import write_report_html
 from .report_json import build_report, write_report_json
 from .report_md import write_report_markdown
@@ -61,6 +65,55 @@ def _refuse_input_overwrite(config: Any, paths: dict[str, Path]) -> None:
                 "输出文件与输入或配置文件路径冲突，拒绝覆盖",
                 str(target),
             )
+
+
+def execute_rehearsal(
+    config_path: str | Path, request_path: str | Path, out_path: str | Path
+) -> dict[str, Any]:
+    """Run the read-only endpoint repair rehearsal and write one JSON report.
+
+    The GeoJSON/CSV sources and the request file are only read; the output
+    path must not alias any of them.
+    """
+    config = load_config(config_path)
+    request_file = Path(request_path)
+    if not request_file.is_file():
+        raise ReportError(
+            "TOPO-RPT-005", "修复请求文件不存在或不是普通文件", str(request_file)
+        )
+    try:
+        raw_request = json.loads(request_file.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        raise ReportError(
+            "TOPO-RPT-005",
+            f"修复请求 JSON 解析失败 (line {exc.lineno}, column {exc.colno})",
+            str(request_file),
+        ) from exc
+    request = parse_repair_request(raw_request)
+    layers = load_layers(config)
+    result = rehearse_endpoint_repair(config, layers, request)
+    report = build_rehearsal_report(
+        result,
+        run_label=config.run_label,
+        input_files=tuple(
+            sorted(
+                (layer.input_file for layer in layers),
+                key=lambda item: item.layer_id,
+            )
+        ),
+    )
+    destination = Path(out_path)
+    protected = {Path(config_path).resolve(), request_file.resolve()} | {
+        layer.resolved_path.resolve() for layer in config.layers
+    }
+    if destination.resolve() in protected:
+        raise ReportError(
+            "TOPO-RPT-004",
+            "预演报告路径与输入或配置文件冲突，拒绝覆盖",
+            str(destination),
+        )
+    write_rehearsal_report(destination, report)
+    return report
 
 def render_terminal_summary(report: dict[str, Any], paths: dict[str, Path]) -> str:
     summary = report.get("summary", {})

@@ -213,3 +213,43 @@ def geometry_type_counts(features: tuple[Feature, ...]) -> dict[str, int]:
         kind = feature.geometry.kind
         counts[kind] = counts.get(kind, 0) + 1
     return counts
+
+
+# Repair rehearsal models live in repair_model.py; re-exported here so the
+# historical import paths (``from .model import EndpointRef``) keep working.
+from .repair_model import (  # noqa: E402
+    EndpointMove,
+    EndpointRef,
+    FindingChange,
+    RepairCandidate,
+    RepairConflict,
+    RepairRehearsalResult,
+)
+
+__all__ = [
+    "AuditConfig",
+    "AuditResult",
+    "Bounds",
+    "CRS",
+    "DeclaredCRS",
+    "EndpointMove",
+    "EndpointRef",
+    "Feature",
+    "FieldSpec",
+    "Finding",
+    "FindingChange",
+    "Geometry",
+    "InputFile",
+    "LayerConfig",
+    "LayerStats",
+    "LoadedLayer",
+    "RepairCandidate",
+    "RepairConflict",
+    "RepairRehearsalResult",
+    "SUPPORTED_GEOMETRY_TYPES",
+    "SUPPORTED_SCHEMA_TYPES",
+    "SEVERITIES",
+    "SEVERITY_RANK",
+    "Tolerance",
+    "geometry_type_counts",
+]

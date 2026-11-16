@@ -51,7 +51,13 @@ python -m topoaudit query --ledger build/demo/audit.sqlite \
 python -m topoaudit serve --ledger build/demo/audit.sqlite \
   --host 127.0.0.1 --port 8765
 
-# 6) 运行全部测试
+# 6) 只读预演端点吸附修复（不写回 GeoJSON/CSV 源）
+python -m topoaudit rehearse \
+  --config fixtures/demo/config.json \
+  --request repair-request.json \
+  --out build/rehearsal.json
+
+# 7) 运行全部测试
 python -m unittest discover -s tests -v
 ```
 
@@ -222,7 +228,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 ├── topoaudit/
 │   ├── __init__.py        # 版本与 schema 版本
 │   ├── __main__.py        # python -m topoaudit 入口
-│   ├── cli.py             # run/demo/verify/serve/query
+│   ├── cli.py             # run/demo/verify/serve/query/rehearse
 │   ├── config.py          # 严格配置加载与 config_digest
 │   ├── config_schema.py   # 嵌套配置校验
 │   ├── errors.py          # 稳定错误码
@@ -236,7 +242,17 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── rule_schema.py     # 属性规则
 │   ├── rule_geometry.py   # 坐标与几何规则
 │   ├── rule_topology.py   # 身份、压盖、端点规则
-│   ├── rules.py           # 规则编排
+│   ├── endpoint_index.py  # 确定性线端点索引与连接分组
+│   ├── geometry_edits.py  # 内存副本上的线端点坐标编辑
+│   ├── rules.py           # 规则编排与 findings 业务键差分
+│   ├── repair_model.py    # 修复预演数据模型
+│   ├── repair_request.py  # 修复请求模型与严格 JSON 解析
+│   ├── repair_validate.py # 预演前置检查与目标/保护校验
+│   ├── repair_candidates.py # 显式边聚簇、预算枚举与帕累托前沿
+│   ├── repair_anchors.py  # 吸附锚点几何与逐簇可行性
+│   ├── repair_verify.py   # 内存副本复审与连接完整性校验
+│   ├── repair.py          # 只读端点修复预演编排
+│   ├── repair_report.py   # 预演 JSON 报告与摘要
 │   ├── engine.py          # 端到端审计结果
 │   ├── report_json.py     # 确定性 JSON 与 result_digest
 │   ├── report_md.py       # Markdown 报告
@@ -248,7 +264,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── demo.py            # 合成演示与预期计数核对
 │   ├── server.py          # 回环只读 HTTP 服务
 │   └── server_pages.py    # 自包含复核页面
-└── tests/                 # 7 个 unittest 文件
+└── tests/                 # 8 个 unittest 文件
 ```
 
 `fixtures/demo` 全部为虚构合成数据，不包含真实公司、域名、地址、凭据或个人数据。
@@ -264,6 +280,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - SQLite 表结构、幂等写入、过滤查询、报告/台账篡改检测。
 - 本机 HTTP 服务的健康检查、页面、JSON 过滤、路径穿越/未知路由拒绝、方法限制和回环绑定。
 - CLI demo 端到端、fixture 哈希不变、重复运行一致、输出冲突保护、篡改后 `verify` 返回 1。
+- 端点修复预演：位移/保护约束、近邻不传递并簇、零长度/自交/误接入拦截、修后 findings 真实复审、帕累托取舍、预算截断复核、无效几何/CRS 拒绝、源文件字节不变与输入排列稳定性。
 
 ```bash
 python -m unittest discover -s tests -v
@@ -280,11 +297,12 @@ python -m unittest discover -s tests -v
 - 自相交和近接判定依赖配置容差；改变容差可能改变 findings 和摘要。
 - 大图层两两比较为本地小团队卡点设计，不面向超大数据集或分布式计算。
 - 报告和台账是本地文件，摘要不具备签名、访问控制或防篡改硬件保障。
-- 不自动修复数据，不对 CRS、精度、法定合规性作最终认定。
+- 不自动写回或修改源数据：`rehearse` 只在内存副本上预演端点吸附并输出候选与复审证据，真正的数据修正仍需人工在源系统执行。
 
 ## 12. 文档索引
 
 - [`docs/CONFIG.md`](docs/CONFIG.md)：配置 schema、默认值、输入格式、错误码。
 - [`docs/RULES.md`](docs/RULES.md)：19 条规则的语义、证据、示例覆盖和限制。
 - [`docs/DETERMINISM.md`](docs/DETERMINISM.md)：摘要链、排序、幂等和复现方法。
+- [`docs/REPAIR.md`](docs/REPAIR.md)：只读端点修复预演的请求、聚簇、复审、帕累托取舍与冲突词汇。
 - [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)：离线、只读、数据边界和安全合规说明。
