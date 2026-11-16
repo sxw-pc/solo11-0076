@@ -172,6 +172,35 @@
           ]
         ]
       }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-013",
+        "zone": "E",
+        "area_hint": 1000
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[700, 0], [740, 0], [740, 40], [700, 40], [700, 0]],
+          [[710, 10], [730, 10], [730, 40], [710, 40], [710, 10]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "parcel_id": "P-014",
+        "zone": "F",
+        "area_hint": 1600
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[720, 20], [760, 20], [760, 60], [720, 60], [720, 20]]
+        ]
+      }
     }
   ]
 }

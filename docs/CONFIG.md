@@ -23,16 +23,18 @@
 | `coordinate_epsilon` | `1e-9` | 有限数字，`> 0` | 坐标相等、顶点重复、线段零长度、环闭合、规范几何量化的容差 |
 | `near_miss_distance` | `1.0` | 有限数字，`>= 0` | 不同线端点之间“近接”提示的距离上限，坐标单位 |
 | `sliver_ratio` | `0.1` | 有限数字，`> 0` | 面积/周长比低于该值的有效多边形报告为狭长多边形 |
+| `overlap_budget` | `64` | 非负整数 | 单对多边形压盖判定中边界细分证人评估的预算上限；预算耗尽记 `POLYGON_OVERLAP_REVIEW` |
 
 `tolerance` 对象内不允许未知键。数字不能是布尔值、`NaN` 或 `Infinity`。
 
-各图层可在 `thresholds` 中覆盖这三个字段：
+各图层可在 `thresholds` 中覆盖这四个字段：
 
 ```json
 "thresholds": {
   "coordinate_epsilon": 0.000001,
   "near_miss_distance": 2.0,
-  "sliver_ratio": 0.12
+  "sliver_ratio": 0.12,
+  "overlap_budget": 128
 }
 ```
 

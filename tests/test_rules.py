@@ -21,9 +21,9 @@ class RuleEngineTest(unittest.TestCase):
             cls.by_code.setdefault(finding.rule_id, []).append(finding)
     def test_all_rules_covered_by_fixture(self):
         self.assertEqual(set(self.by_code), set(RULE_IDS))
-        self.assertEqual(len(self.result.findings), 24)
-        self.assertEqual(self.result.summary["total_findings"], 24)
-        self.assertEqual(self.result.summary["severity_counts"], {"error": 15, "warning": 8, "info": 1})
+        self.assertEqual(len(self.result.findings), 25)
+        self.assertEqual(self.result.summary["total_findings"], 25)
+        self.assertEqual(self.result.summary["severity_counts"], {"error": 15, "warning": 9, "info": 1})
     def test_rule_counts(self):
         expected = {
             "SCHEMA_MISSING_FIELD": 3,
@@ -31,6 +31,7 @@ class RuleEngineTest(unittest.TestCase):
             "DANGLING_ENDPOINT": 3,
             "EMPTY_LAYER": 1,
             "POLYGON_OVERLAP": 1,
+            "POLYGON_OVERLAP_REVIEW": 1,
             "NEAR_MISS_ENDPOINT": 1,
             "DUPLICATE_CONSECUTIVE_VERTEX": 1,
             "ZERO_LENGTH_SEGMENT": 1,
@@ -49,6 +50,21 @@ class RuleEngineTest(unittest.TestCase):
         overlap = self.by_code["POLYGON_OVERLAP"][0]
         self.assertEqual(overlap.feature_id, "P-007")
         self.assertEqual(overlap.related_feature_ids, ("P-008",))
+        self.assertEqual(overlap.evidence["verdict"], "certified_overlap")
+        self.assertEqual(overlap.evidence["certification"], "proper_crossing")
+        witness = overlap.evidence["witness"]
+        self.assertEqual(len(witness), 2)
+        self.assertTrue(220 < witness[0] < 240)
+        self.assertTrue(220 < witness[1] < 240)
+        self.assertEqual(overlap.evidence["budget"]["limit"], 64)
+        review = self.by_code["POLYGON_OVERLAP_REVIEW"][0]
+        self.assertEqual(review.severity, "warning")
+        self.assertEqual(review.feature_id, "P-013")
+        self.assertEqual(review.related_feature_ids, ("P-014",))
+        self.assertEqual(review.evidence["verdict"], "uncertain")
+        self.assertEqual(review.evidence["reason"], "topology_undefined")
+        self.assertTrue(review.evidence["locations"])
+        self.assertIn("issues_a", review.evidence["raw_evidence"])
         near = self.by_code["NEAR_MISS_ENDPOINT"][0]
         self.assertEqual(near.severity, "info")
         self.assertEqual(set((near.feature_id, *near.related_feature_ids)), {"RD-008", "RD-009"})

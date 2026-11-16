@@ -15,14 +15,17 @@ from .model import (
     Tolerance,
 )
 from .rules_catalog import RULE_IDS
-THRESHOLD_KEYS = ("coordinate_epsilon", "near_miss_distance", "sliver_ratio")
+THRESHOLD_KEYS = ("coordinate_epsilon", "near_miss_distance", "sliver_ratio", "overlap_budget")
 
 def parse_tolerance(raw: Any, path: str) -> Tolerance:
     obj = _object(raw, path, set(THRESHOLD_KEYS))
     values = Tolerance().as_dict()
     for key in THRESHOLD_KEYS:
         if key in obj:
-            values[key] = _finite_number(obj[key], f"{path}.{key}")
+            if key == "overlap_budget":
+                values[key] = _budget_number(obj[key], f"{path}.{key}")
+            else:
+                values[key] = _finite_number(obj[key], f"{path}.{key}")
     if values["coordinate_epsilon"] <= 0:
         raise ConfigError("TOPO-CFG-006", "coordinate_epsilon 必须大于 0", f"{path}.coordinate_epsilon")
     if values["near_miss_distance"] < 0:
@@ -148,6 +151,9 @@ def _parse_layer_thresholds(raw: Any, path: str) -> dict[str, float]:
     result: dict[str, float] = {}
     for key in THRESHOLD_KEYS:
         if key in obj:
+            if key == "overlap_budget":
+                result[key] = _budget_number(obj[key], f"{path}.{key}")
+                continue
             value = _finite_number(obj[key], f"{path}.{key}")
             if key == "coordinate_epsilon" and value <= 0:
                 raise ConfigError("TOPO-CFG-006", "coordinate_epsilon 必须大于 0", f"{path}.{key}")
@@ -201,3 +207,9 @@ def _finite_number(value: Any, path: str) -> float:
     if not math.isfinite(number):
         raise ConfigError("TOPO-CFG-006", "数字必须是有限值", path)
     return number
+
+def _budget_number(value: Any, path: str) -> int:
+    number = _finite_number(value, path)
+    if number < 0 or not number.is_integer():
+        raise ConfigError("TOPO-CFG-006", "overlap_budget 必须是非负整数", path)
+    return int(number)

@@ -42,7 +42,7 @@ class LoaderTest(unittest.TestCase):
         config = load_config(DEMO / "config.json")
         layers = load_layers(config)
         self.assertEqual([item.config.layer_id for item in layers], ["parcels", "roads", "points", "empty"])
-        self.assertEqual(len(layers[0].features), 12)
+        self.assertEqual(len(layers[0].features), 14)
         self.assertEqual(len(layers[1].features), 14)
         self.assertEqual(layers[2].features[0].properties["elevation"], 12.5)
         self.assertEqual(layers[2].features[4].properties["label"], "")

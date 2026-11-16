@@ -1,6 +1,6 @@
 # 矢量拓扑验台（topoaudit）
 
-一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 19 条规则，输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
+一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 20 条规则，输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
 
 - 项目 slug：`topoaudit`
 - Python：3.10+
@@ -58,11 +58,11 @@ python -m unittest discover -s tests -v
 演示会核对 `fixtures/demo/expected_summary.json`，并确保演示输出不写入 fixture 目录。当前 fixture 的参考值：
 
 ```text
-layers / features : 4 / 33
-findings          : 24（error=15, warning=8, info=1）
-覆盖规则           : 19 / 19
-input_digest      : e3ea9103ea9b01639897200ce167a64d17822b1ac6c796733cd5e49524246b25
-result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f8e73
+layers / features : 4 / 35
+findings          : 25（error=15, warning=9, info=1）
+覆盖规则           : 20 / 20
+input_digest      : bef2b73851417c3e4b5151f015575b385f9923022e2aef2198add675eac25057
+result_digest     : c182dcb957879b05ffb16200215f021123cb8e1723947727f97da52a391ea2c2
 ```
 
 `result_digest` 是 fixture、配置和规则实现的联合指纹。修改任何一项后，应以新生成的报告和 `verify` 结果为准。
@@ -84,7 +84,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 ```json
 {
-  "finding_id": "7347d5cbd43cce7d",
+  "finding_id": "a55f59ace8edf4fd",
   "rule_id": "POLYGON_OVERLAP",
   "severity": "error",
   "layer_id": "parcels",
@@ -93,12 +93,16 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
   "evidence": {
     "pair": ["P-007", "P-008"],
     "component_indexes": ["polygons[0]", "polygons[0]"],
-    "bbox_intersection": [220.0, 220.0, 240.0, 240.0]
+    "bbox_intersection": [220.0, 220.0, 240.0, 240.0],
+    "verdict": "certified_overlap",
+    "certification": "proper_crossing",
+    "witness": [237.5, 222.5],
+    "budget": {"limit": 64, "consumed": 0}
   }
 }
 ```
 
-报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 19 条规则及计数；`findings` 是已排序明细；`limitations` 固定记录能力边界。
+报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 20 条规则及计数；`findings` 是已排序明细；`limitations` 固定记录能力边界。
 
 ## 4. 配置和输入
 
@@ -145,7 +149,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 ## 5. 规则与严重级别
 
-19 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
+20 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
 
 | 级别 | 含义 |
 | --- | --- |
@@ -157,7 +161,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 - 属性与身份：`SCHEMA_MISSING_FIELD`、`SCHEMA_TYPE_MISMATCH`、`DUPLICATE_FEATURE_ID`。
 - 坐标与几何结构：`COORD_NON_FINITE`、`COORD_OUT_OF_BOUNDS`、`GEOM_UNSUPPORTED_TYPE`、`RING_NOT_CLOSED`、`RING_TOO_FEW_POINTS`、`LINE_TOO_FEW_POINTS`、`DUPLICATE_CONSECUTIVE_VERTEX`、`ZERO_LENGTH_SEGMENT`、`SELF_INTERSECTION`。
-- 拓扑与形态：`DUPLICATE_GEOMETRY`、`POLYGON_OVERLAP`、`SLIVER_POLYGON`、`DANGLING_ENDPOINT`、`NEAR_MISS_ENDPOINT`、`LAYER_CRS_MISMATCH`、`EMPTY_LAYER`。
+- 拓扑与形态：`DUPLICATE_GEOMETRY`、`POLYGON_OVERLAP`、`POLYGON_OVERLAP_REVIEW`、`SLIVER_POLYGON`、`DANGLING_ENDPOINT`、`NEAR_MISS_ENDPOINT`、`LAYER_CRS_MISMATCH`、`EMPTY_LAYER`。
 
 ## 6. 退出码和 findings 语义
 
@@ -229,13 +233,17 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── model.py           # 冻结数据模型
 │   ├── loaders.py         # GeoJSON / CSV 只读加载
 │   ├── geometry_core.py   # 几何谓词
-│   ├── geometry.py        # 面积、环、包含、压盖视图
+│   ├── geometry.py        # 面积、环、包含、压盖视图与布尔兼容包装
+│   ├── geometry_topology.py  # 环/洞拓扑清晰度筛查
+│   ├── geometry_witness.py   # 压盖证人构造与预算化边界细分
+│   ├── geometry_overlap.py   # 三值压盖判定（certified/disjoint/uncertain）
 │   ├── normalize.py       # 规范几何签名
-│   ├── rules_catalog.py   # 19 条规则目录和固定级别
+│   ├── rules_catalog.py   # 20 条规则目录和固定级别
 │   ├── findings.py        # finding 构造、去重、排序
 │   ├── rule_schema.py     # 属性规则
 │   ├── rule_geometry.py   # 坐标与几何规则
-│   ├── rule_topology.py   # 身份、压盖、端点规则
+│   ├── rule_overlap.py    # 压盖/压盖待复核规则
+│   ├── rule_topology.py   # 身份、端点规则
 │   ├── rules.py           # 规则编排
 │   ├── engine.py          # 端到端审计结果
 │   ├── report_json.py     # 确定性 JSON 与 result_digest
@@ -248,7 +256,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── demo.py            # 合成演示与预期计数核对
 │   ├── server.py          # 回环只读 HTTP 服务
 │   └── server_pages.py    # 自包含复核页面
-└── tests/                 # 7 个 unittest 文件
+└── tests/                 # 8 个 unittest 文件
 ```
 
 `fixtures/demo` 全部为虚构合成数据，不包含真实公司、域名、地址、凭据或个人数据。
@@ -259,7 +267,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 - 几何谓词、包含关系（含孔洞）、压盖和规范化。
 - GeoJSON/CSV 加载、文件摘要、非法输入、严格配置错误。
-- 19 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
+- 20 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
 - JSON/Markdown/HTML 报告的确定性、自包含与转义。
 - SQLite 表结构、幂等写入、过滤查询、报告/台账篡改检测。
 - 本机 HTTP 服务的健康检查、页面、JSON 过滤、路径穿越/未知路由拒绝、方法限制和回环绑定。
@@ -269,14 +277,14 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 python -m unittest discover -s tests -v
 ```
 
-工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行，生产代码与测试合计在 2500–4500 行之间。
+工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行，生产代码与测试合计在 2500–6000 行之间。
 
 ## 11. 已知限制
 
 - 仅支持二维欧氏几何；`crs.type=geographic` 只做经纬度边界校验，不做投影或距离换算。
 - 拓扑检查以单图层为边界，不建立跨图层的节点—边—面拓扑，也不做全局连通性、缝隙面积或压盖面积计算。
 - 端点规则只比较线要素端点，不把多边形边界、线内部顶点或另一图层的端点视为连接。
-- 压盖检测先用 bbox 预筛，再做确定性布尔拓扑判断；只报告内部重叠，共边或共点不算压盖。
+- 压盖判定输出三值结论：`certified_overlap` 报 `POLYGON_OVERLAP`，`certified_disjoint` 不报告，`uncertain`（拓扑定义不清、容差不稳定或预算耗尽）报 `POLYGON_OVERLAP_REVIEW` 交人工复核，不视为通过；只报告内部重叠，共边或共点不算压盖。
 - 自相交和近接判定依赖配置容差；改变容差可能改变 findings 和摘要。
 - 大图层两两比较为本地小团队卡点设计，不面向超大数据集或分布式计算。
 - 报告和台账是本地文件，摘要不具备签名、访问控制或防篡改硬件保障。
@@ -285,6 +293,6 @@ python -m unittest discover -s tests -v
 ## 12. 文档索引
 
 - [`docs/CONFIG.md`](docs/CONFIG.md)：配置 schema、默认值、输入格式、错误码。
-- [`docs/RULES.md`](docs/RULES.md)：19 条规则的语义、证据、示例覆盖和限制。
+- [`docs/RULES.md`](docs/RULES.md)：20 条规则的语义、证据、示例覆盖和限制。
 - [`docs/DETERMINISM.md`](docs/DETERMINISM.md)：摘要链、排序、幂等和复现方法。
 - [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)：离线、只读、数据边界和安全合规说明。

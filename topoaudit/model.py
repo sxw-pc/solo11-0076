@@ -55,11 +55,13 @@ class Tolerance:
     coordinate_epsilon: float = 1e-9
     near_miss_distance: float = 1.0
     sliver_ratio: float = 0.1
+    overlap_budget: int = 64
     def as_dict(self) -> dict[str, float]:
         return {
             "coordinate_epsilon": self.coordinate_epsilon,
             "near_miss_distance": self.near_miss_distance,
             "sliver_ratio": self.sliver_ratio,
+            "overlap_budget": self.overlap_budget,
         }
 @dataclass(frozen=True)
 class FieldSpec:

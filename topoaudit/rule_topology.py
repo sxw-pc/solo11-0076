@@ -3,18 +3,14 @@ from __future__ import annotations
 from typing import Any, Optional
 from .findings import FindingCollector
 from .geometry import (
-    bbox_intersection,
     distance,
     format_point,
     is_finite_point,
     line_components,
     points_close,
-    polygon_bbox,
-    polygon_components,
-    polygons_overlap,
-    valid_polygon,
 )
 from .model import Feature, LayerConfig, Tolerance
+from .rule_overlap import check_polygon_overlaps
 from .normalize import canonical_geometry
 from .util import canonical_json, sha256_text, stable_round
 
@@ -27,7 +23,7 @@ def check_layer_topology(
     ordered = tuple(sorted(features, key=lambda item: item.source_index))
     _check_duplicate_ids(ordered, layer, collector)
     _check_duplicate_geometries(ordered, layer, tolerance, collector)
-    _check_polygon_overlaps(ordered, layer, tolerance, collector)
+    check_polygon_overlaps(ordered, layer, tolerance, collector)
     _check_line_endpoints(ordered, layer, tolerance, collector)
 
 def _check_duplicate_ids(
@@ -89,48 +85,6 @@ def _check_duplicate_geometries(
                 "coordinate_epsilon": tolerance.coordinate_epsilon,
             },
         )
-
-def _check_polygon_overlaps(
-    features: tuple[Feature, ...],
-    layer: LayerConfig,
-    tolerance: Tolerance,
-    collector: FindingCollector,
-) -> None:
-    if not layer.rule_enabled("POLYGON_OVERLAP"):
-        return
-    entries: list[tuple[Feature, str, Any, tuple[float, float, float, float]]] = []
-    for feature in features:
-        for label, polygon in polygon_components(feature.geometry):
-            if not valid_polygon(polygon, tolerance.coordinate_epsilon):
-                continue
-            bbox = polygon_bbox(polygon)
-            if bbox is not None:
-                entries.append((feature, label, polygon, bbox))
-    for left in range(len(entries)):
-        feature_a, label_a, polygon_a, bbox_a = entries[left]
-        for right in range(left + 1, len(entries)):
-            feature_b, label_b, polygon_b, bbox_b = entries[right]
-            if feature_a.source_index == feature_b.source_index:
-                continue
-            intersection = bbox_intersection(bbox_a, bbox_b)
-            if intersection is None:
-                continue
-            if not polygons_overlap(polygon_a, polygon_b, tolerance.coordinate_epsilon):
-                continue
-            first, second = sorted(
-                (feature_a, feature_b), key=lambda item: item.source_index
-            )
-            collector.add(
-                "POLYGON_OVERLAP",
-                layer.layer_id,
-                first.feature_id,
-                related_feature_ids=(second.feature_id,),
-                evidence={
-                    "pair": [first.feature_id, second.feature_id],
-                    "component_indexes": [label_a, label_b],
-                    "bbox_intersection": [stable_round(value) for value in intersection],
-                },
-            )
 
 def _check_line_endpoints(
     features: tuple[Feature, ...],

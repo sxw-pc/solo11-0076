@@ -137,11 +137,14 @@ def polygon_centroid(polygon: Sequence[Sequence[Point]]) -> Optional[Point]:
         cy += (float(y1) + float(y2)) * factor
     return (cx / (6.0 * signed), cy / (6.0 * signed))
 
-def polygons_overlap(a: Polygon, b: Polygon, epsilon: float = 0.0) -> bool:
-    """Conservative, deterministic interior-overlap predicate.
+def legacy_polygons_overlap(a: Polygon, b: Polygon, epsilon: float = 0.0) -> bool:
+    """The pre-certification boolean predicate, kept for regression evidence.
 
-    Bounding boxes prefilter; proper boundary crossings and strict vertex
-    containment then establish overlap.  Shared edges alone do not.
+    It only inspects outer-ring proper crossings, outer-ring vertex
+    containment, and the outer-ring centroid, so it misses pairs whose
+    shared interior is bounded by holes (for example two polygons with an
+    identical shell but different holes).  Do not use for new decisions;
+    use :func:`topoaudit.geometry_overlap.polygon_overlap_verdict`.
     """
     if not valid_polygon(a, epsilon) or not valid_polygon(b, epsilon):
         return False
@@ -168,6 +171,18 @@ def polygons_overlap(a: Polygon, b: Polygon, epsilon: float = 0.0) -> bool:
         ):
             return True
     return False
+
+def polygons_overlap(a: Polygon, b: Polygon, epsilon: float = 0.0) -> bool:
+    """Boolean compatibility wrapper over the certified three-valued verdict.
+
+    Returns true only for ``certified_overlap``; ``uncertain`` pairs return
+    ``False`` here.  Use
+    :func:`topoaudit.geometry_overlap.polygon_overlap_verdict` to
+    distinguish uncertain pairs from certified disjoint ones.
+    """
+    from .geometry_overlap import VERDICT_CERTIFIED_OVERLAP, polygon_overlap_verdict
+    verdict = polygon_overlap_verdict(a, b, epsilon)
+    return verdict.verdict == VERDICT_CERTIFIED_OVERLAP
 
 def line_components(geometry: Any) -> list[tuple[str, tuple[Point, ...]]]:
     if geometry.kind == "LineString":

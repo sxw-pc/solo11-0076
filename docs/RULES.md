@@ -1,6 +1,6 @@
 # 规则目录与语义
 
-`topoaudit` 固定提供 19 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
+`topoaudit` 固定提供 20 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
 
 ## 1. 通用语义
 
@@ -30,12 +30,13 @@
 | 11 | `SELF_INTERSECTION` | error | 线或环的非相邻线段相交、接触或共线重叠 | `locations`、`segment_pairs` |
 | 12 | `DUPLICATE_FEATURE_ID` | error | 同一图层多个要素的 ID 字段字符串值相同 | `id_field`、`value`、首末 `source_index` |
 | 13 | `DUPLICATE_GEOMETRY` | warning | 规范几何签名完全相同 | `geometry_digest`、首末 `source_index`、`coordinate_epsilon` |
-| 14 | `POLYGON_OVERLAP` | error | 两个不同要素的有效多边形内部重叠 | `pair`、`component_indexes`、`bbox_intersection` |
-| 15 | `SLIVER_POLYGON` | warning | 有效多边形面积/周长比低于 `sliver_ratio` | `part_index`、`area`、`perimeter`、`ratio`、`threshold` |
-| 16 | `DANGLING_ENDPOINT` | warning | 线端点附近没有其他要素的线端点 | `part_index`、`endpoint`、`coordinate`、`nearest_feature_id`、`nearest_distance`、`tolerance` |
-| 17 | `NEAR_MISS_ENDPOINT` | info | 不同要素端点距离大于坐标容差且不超过近接容差 | `endpoint_a`、`endpoint_b`、`distance`、`tolerance` |
-| 18 | `LAYER_CRS_MISMATCH` | error | 图层 `declared_crs` 的名称或类型与全局 `crs` 不一致 | `expected_crs`、`declared_crs` |
-| 19 | `EMPTY_LAYER` | warning | 图层加载后要素数为 0 | `feature_count` |
+| 14 | `POLYGON_OVERLAP` | error | 两个不同要素的有效多边形存在可证实的内部重叠 | `pair`、`component_indexes`、`bbox_intersection`、`verdict`、`certification`、`witness`、`budget` |
+| 15 | `POLYGON_OVERLAP_REVIEW` | warning | 压盖判定无法给出确定证据（拓扑不清、容差不稳定或预算耗尽） | `pair`、`component_indexes`、`bbox_intersection`、`verdict`、`reason`、`locations`、`budget` |
+| 16 | `SLIVER_POLYGON` | warning | 有效多边形面积/周长比低于 `sliver_ratio` | `part_index`、`area`、`perimeter`、`ratio`、`threshold` |
+| 17 | `DANGLING_ENDPOINT` | warning | 线端点附近没有其他要素的线端点 | `part_index`、`endpoint`、`coordinate`、`nearest_feature_id`、`nearest_distance`、`tolerance` |
+| 18 | `NEAR_MISS_ENDPOINT` | info | 不同要素端点距离大于坐标容差且不超过近接容差 | `endpoint_a`、`endpoint_b`、`distance`、`tolerance` |
+| 19 | `LAYER_CRS_MISMATCH` | error | 图层 `declared_crs` 的名称或类型与全局 `crs` 不一致 | `expected_crs`、`declared_crs` |
+| 20 | `EMPTY_LAYER` | warning | 图层加载后要素数为 0 | `feature_count` |
 
 ## 3. 逐条说明
 
@@ -122,15 +123,28 @@ LineString 或 MultiLineString 的任一组组成部分少于 2 个坐标。位�
 
 **`POLYGON_OVERLAP`**
 
-只比较不同要素的有效多边形部件。有效多边形要求：非空、所有环至少 4 点且闭合、外环面积大于 `epsilon²`。流程：
+只比较不同要素的有效多边形部件（含孔洞和 MultiPolygon 的每个部件）。有效多边形要求：非空、所有环至少 4 点且闭合、外环面积大于 `epsilon²`。判定输出三值结论，只有 `certified_overlap` 才产生本规则 finding：
 
-1. 计算部件 bbox；
-2. bbox 不相交则跳过；
-3. 检查边界“真正穿越”；
-4. 检查顶点严格包含于对方；
-5. 检查质心严格包含。
+1. bbox 在容差外离则 `certified_disjoint`，跳过；
+2. 任一部件拓扑定义不清（环自交、洞越界、洞与外环相切、洞相交或嵌套）则 `uncertain`；
+3. 边界“真正穿越”（含孔洞环）→ `certified_overlap`；
+4. 任一环顶点严格包含于对方内部 → `certified_overlap`；
+5. 任一部件质心严格落在双方内部 → `certified_overlap`；
+6. 共线共边且内部同侧的边界段，在 `overlap_budget` 预算内细分采样，找到严格落在双方内部的证人点 → `certified_overlap`；
+7. 仅精确共边/共点接触 → `certified_disjoint`；接触或间距在容差内但无法精确判定 → `uncertain`。
 
-仅共边、仅共点、边界接触不算内部重叠。bbox 相交但内部不重叠不会报告。每条 finding 关联两个要素，证据包含双方部件标签和 bbox 交。算法不计算压盖面积，也不检测跨图层压盖。
+仅共边、仅共点、边界接触不算内部重叠；bbox 相交但内部不重叠不会报告。每条 finding 关联两个要素，证据包含双方部件标签、bbox 交、`verdict`、`certification`（取证方式）、`witness`（可定位的共同内部点）和 `budget`（预算上限与消耗）。算法不计算压盖面积，也不检测跨图层压盖。
+
+**`POLYGON_OVERLAP_REVIEW`**
+
+当面对 bbox 相交（含容差扩张后相交）时判定为 `uncertain` 即产生本规则 finding，表示“不能证明压盖，也不能证明不压盖”，必须人工复核，**不得视为通过**。`reason` 取值：
+
+- `topology_undefined`：环自交、洞越界、洞与外环相切、洞嵌套或洞相切，拓扑定义不清；
+- `tolerance_unstable_contact` / `tolerance_unstable_crossing`：边界间距或穿越角在 `coordinate_epsilon` 之内，容差无法给出稳定证据；
+- `tolerance_unstable`：同侧共边段的证人在细分到容差尺度后仍无法稳定分类；
+- `budget_exhausted`：`overlap_budget` 预算耗尽，细分未完成。
+
+证据包含 `locations`（无法判定的几何位置）、`budget`（预算上限与消耗）和 `raw_evidence`（原始拓扑缺陷或接触记录）。同一面对在较高预算下可能证实压盖（`POLYGON_OVERLAP`），在较低预算下只能得到本规则；两条路线都记录预算消耗，不会把 `uncertain` 归入通过。
 
 **`SLIVER_POLYGON`**
 
@@ -180,7 +194,7 @@ coordinate_epsilon < distance <= near_miss_distance
 
 ## 4. 演示 fixture 覆盖
 
-`fixtures/demo` 的预期 finding 计数为 24，覆盖全部 19 条规则：
+`fixtures/demo` 的预期 finding 计数为 25，覆盖全部 20 条规则：
 
 | 规则 | 计数 | 规则 | 计数 | 规则 | 计数 |
 | --- | ---: | --- | ---: | --- | ---: |
@@ -188,11 +202,11 @@ coordinate_epsilon < distance <= near_miss_distance
 | `COORD_OUT_OF_BOUNDS` | 1 | `GEOM_UNSUPPORTED_TYPE` | 1 | `RING_NOT_CLOSED` | 1 |
 | `RING_TOO_FEW_POINTS` | 1 | `LINE_TOO_FEW_POINTS` | 1 | `DUPLICATE_CONSECUTIVE_VERTEX` | 1 |
 | `ZERO_LENGTH_SEGMENT` | 1 | `SELF_INTERSECTION` | 1 | `DUPLICATE_FEATURE_ID` | 1 |
-| `DUPLICATE_GEOMETRY` | 1 | `POLYGON_OVERLAP` | 1 | `SLIVER_POLYGON` | 1 |
-| `DANGLING_ENDPOINT` | 3 | `NEAR_MISS_ENDPOINT` | 1 | `LAYER_CRS_MISMATCH` | 1 |
-| `EMPTY_LAYER` | 1 |  |  |  |  |
+| `DUPLICATE_GEOMETRY` | 1 | `POLYGON_OVERLAP` | 1 | `POLYGON_OVERLAP_REVIEW` | 1 |
+| `SLIVER_POLYGON` | 1 | `DANGLING_ENDPOINT` | 3 | `NEAR_MISS_ENDPOINT` | 1 |
+| `LAYER_CRS_MISMATCH` | 1 | `EMPTY_LAYER` | 1 |  |  |
 
-按图层：`parcels=7`、`roads=11`、`points=5`、`empty=1`。按级别：`error=15`、`warning=8`、`info=1`。完整预期见 `fixtures/demo/expected_summary.json`。
+按图层：`parcels=8`、`roads=11`、`points=5`、`empty=1`。按级别：`error=15`、`warning=9`、`info=1`。完整预期见 `fixtures/demo/expected_summary.json`。
 
 ## 5. 已知判定限制
 
@@ -200,6 +214,6 @@ coordinate_epsilon < distance <= near_miss_distance
 - 不执行完整平面图构建，不检查节点度数、连通分量、悬挂链或面网闭合环。
 - 不检查跨图层拓扑、跨图层重复、跨图层压盖。
 - 不检查 Z/M 值、坐标精度来源、拓扑规则库或 OGC 简单要素的全部合法性问题。
-- 压盖是保守布尔判定，不计算面积；狭长是面积/周长启发式。
+- 压盖是三值判定（certified/disjoint/uncertain），不计算面积；uncertain 一律交人工复核；狭长是面积/周长启发式。
 - 重复几何以配置容差量化，容差变化可能改变“重复”的范围和 finding ID。
 - 规则禁用后不会隐式改变其他规则的判定；关闭规则应理解为“接受该类风险”，而不是“修复数据”。

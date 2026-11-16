@@ -16,7 +16,7 @@ from .rules import run_rules
 from .util import stable_round
 LIMITATIONS = (
     "仅处理二维欧氏几何；不进行坐标参考系转换或投影计算。",
-    "压盖检测返回确定性布尔判定，不计算多边形重叠面积。",
+    "压盖判定输出 certified_overlap / certified_disjoint / uncertain 三值结论，不计算重叠面积；uncertain 以 POLYGON_OVERLAP_REVIEW 提交人工复核，不视为通过。",
     "近接与重复坐标判定依赖配置容差；容差变化会改变结果摘要。",
     "工具只读输入文件，不自动修复、合并或写回源数据。",
     "仅支持本地 GeoJSON 与 CSV，不连接远程服务或数据库。",

@@ -38,11 +38,11 @@ class LedgerTest(unittest.TestCase):
     def test_schema_and_rows(self):
         self.assertEqual(
             self._counts(),
-            {"runs": 1, "layers": 4, "findings": 24, "input_files": 4, "rule_catalog": 19},
+            {"runs": 1, "layers": 4, "findings": 25, "input_files": 4, "rule_catalog": 20},
         )
         self.assertEqual(get_run(self.ledger, self.digest)["run_label"], "demo-local-topology")
         self.assertEqual(len(get_input_files(self.ledger, self.digest)), 4)
-        self.assertEqual(len(get_rule_catalog(self.ledger)), 19)
+        self.assertEqual(len(get_rule_catalog(self.ledger)), 20)
         self.assertTrue(run_exists(self.ledger, self.digest))
         self.assertFalse(run_exists(self.ledger, "0" * 64))
     def test_idempotent_write_by_result_digest(self):
@@ -64,7 +64,7 @@ class LedgerTest(unittest.TestCase):
     def test_verify_success(self):
         result = verify_report_and_ledger(self.paths["json"], self.ledger)
         self.assertTrue(result.ok, result.issues)
-        self.assertEqual(result.finding_count, 24)
+        self.assertEqual(result.finding_count, 25)
         self.assertEqual(result.layer_count, 4)
     def test_verify_detects_report_tampering(self):
         tampered = json.loads(self.paths["json"].read_text(encoding="utf-8"))
