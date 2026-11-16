@@ -97,6 +97,26 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 1")
     connection.commit()
 
+def has_run(path: str | Path, digest: str) -> bool:
+    """Return True when the ledger contains a committed run for ``digest``.
+
+    A missing or unreadable ledger simply means the run was never
+    committed, so ``False`` is returned instead of raising.
+    """
+    try:
+        connection = connect_ledger(path, read_only=True)
+    except LedgerError:
+        return False
+    try:
+        row = connection.execute(
+            "SELECT 1 FROM runs WHERE result_digest = ?", (digest,)
+        ).fetchone()
+        return row is not None
+    except sqlite3.Error:
+        return False
+    finally:
+        connection.close()
+
 def write_report(path: str | Path, report: dict[str, Any]) -> None:
     """Persist a report exactly once per ``result_digest``."""
     digest = str(report.get("result_digest", ""))

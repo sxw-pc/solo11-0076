@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from .errors import LedgerError, ReportError
 from .ledger import connect_ledger
+from .publish import projection_issues_for_report
 from .report_json import compute_result_digest
 from .util import canonical_json
 @dataclass
@@ -17,7 +18,12 @@ class VerificationResult:
     finding_count: int = 0
     layer_count: int = 0
 
-def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -> VerificationResult:
+def verify_report_and_ledger(
+    report_path: str | Path,
+    ledger_path: str | Path,
+    *,
+    check_projection: bool = True,
+) -> VerificationResult:
     report = _load_report(Path(report_path))
     digest = str(report.get("result_digest", ""))
     issues: list[str] = []
@@ -25,6 +31,10 @@ def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -
         issues.append("报告缺少 result_digest")
     elif compute_result_digest(report) != digest:
         issues.append("报告 result_digest 与报告内容不一致")
+    if check_projection:
+        # 若报告位于带发布状态的输出目录，可见的一套文件必须与当前
+        # 发布指针一致，避免复核人员看到半套或混杂的报告。
+        issues.extend(projection_issues_for_report(report_path, digest))
     try:
         connection = connect_ledger(ledger_path, read_only=True)
     except LedgerError as exc:

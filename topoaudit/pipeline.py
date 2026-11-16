@@ -1,14 +1,26 @@
-"""Shared run pipeline used by the CLI and the offline demo."""
+"""Shared run pipeline used by the CLI and the offline demo.
+
+输出发布采用分阶段协议（见 ``topoaudit.publish``）：
+
+1. 全部报告文件先写入版本库 ``.topoaudit/versions/<result_digest>/`` 并
+   记录各文件 SHA-256 清单；
+2. 台账在单个 SQLite 事务内提交（按 ``result_digest`` 幂等）；
+3. 交叉校验暂存产物与台账；
+4. 校验通过后才把可见文件投影到输出目录顶层，并原子切换当前版本指针。
+
+任一阶段中断都不会让半套报告成为当前可见结果；下一次运行会先执行恢
+复，再决定是幂等跳过还是继续发布。
+"""
 from __future__ import annotations
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from .config import load_config
 from .engine import run_audit
 from .errors import ReportError
-from .ledger import write_report
-from .report_html import write_report_html
-from .report_json import build_report, write_report_json
-from .report_md import write_report_markdown
+from .publish import RECOVER_ROLL_FORWARD, Publisher
+from .report_html import render_html
+from .report_json import build_report
+from .report_md import render_markdown
 from .util import pretty_json
 REPORT_JSON = "report.json"
 REPORT_MD = "report.md"
@@ -17,7 +29,14 @@ LEDGER_DB = "audit.sqlite"
 INPUTS_JSON = "inputs.json"
 SUMMARY_TXT = "summary.txt"
 
-def execute(config_path: str | Path, out_dir: str | Path) -> tuple[dict[str, Any], dict[str, Path]]:
+def execute(
+    config_path: str | Path,
+    out_dir: str | Path,
+    *,
+    recover_policy: str = RECOVER_ROLL_FORWARD,
+    fail_at: Optional[str] = None,
+    recovery_actions: Optional[list[dict[str, Any]]] = None,
+) -> tuple[dict[str, Any], dict[str, Path]]:
     config = load_config(config_path)
     result = run_audit(config)
     report = build_report(result)
@@ -31,12 +50,21 @@ def execute(config_path: str | Path, out_dir: str | Path) -> tuple[dict[str, Any
         "inputs": destination / INPUTS_JSON,
         "summary": destination / SUMMARY_TXT,
     }
-    _refuse_input_overwrite(config, paths)
-    write_report_json(paths["json"], report)
-    write_report_markdown(paths["markdown"], report)
-    write_report_html(paths["html"], report)
-    paths["inputs"].write_text(
-        pretty_json(
+    publisher = Publisher(destination, fail_at=fail_at)
+    _refuse_input_overwrite(config, paths, publisher)
+    actions = publisher.recover(policy=recover_policy)
+    if recovery_actions is not None:
+        recovery_actions.extend(actions)
+    digest = str(report["result_digest"])
+    if publisher.is_current(digest):
+        # 同一输入重复运行：可见版本、台账与指针均已一致，幂等跳过。
+        publisher.note_noop(digest)
+        return report, paths
+    files = {
+        REPORT_JSON: pretty_json(report),
+        REPORT_MD: render_markdown(report),
+        REPORT_HTML: render_html(report),
+        INPUTS_JSON: pretty_json(
             {
                 "config_digest": report["config_digest"],
                 "input_digest": report["input_digest"],
@@ -44,17 +72,35 @@ def execute(config_path: str | Path, out_dir: str | Path) -> tuple[dict[str, Any
                 "input_files": report["input_files"],
             }
         ),
-        encoding="utf-8",
+        SUMMARY_TXT: render_terminal_summary(report, paths),
+    }
+    publisher.stage(
+        digest,
+        files,
+        meta={
+            "run_label": report.get("run_label", ""),
+            "input_digest": report.get("input_digest", ""),
+            "config_digest": report.get("config_digest", ""),
+        },
     )
-    paths["summary"].write_text(render_terminal_summary(report, paths), encoding="utf-8")
-    write_report(paths["ledger"], report)
+    publisher.commit_ledger(report, digest)
+    publisher.verify_staged(digest)
+    pointer = publisher.current()
+    publisher.publish(digest, previous=str(pointer["result_digest"]) if pointer else None)
     return report, paths
 
-def _refuse_input_overwrite(config: Any, paths: dict[str, Path]) -> None:
+def _refuse_input_overwrite(
+    config: Any,
+    paths: dict[str, Path],
+    publisher: Optional[Publisher] = None,
+) -> None:
     protected = {config.path.resolve()} | {
         layer.resolved_path.resolve() for layer in config.layers
     }
-    for target in paths.values():
+    targets = list(paths.values())
+    if publisher is not None:
+        targets.extend([publisher.current_path, publisher.journal_path])
+    for target in targets:
         if target.resolve() in protected:
             raise ReportError(
                 "TOPO-RPT-004",

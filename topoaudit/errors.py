@@ -46,3 +46,9 @@ class ServerError(AuditError):
     def __init__(self, code: str, message: str, path: Optional[str] = None) -> None:
         self.code = code
         super().__init__(message, path)
+
+class PublishError(AuditError):
+    """The staged publish/recovery protocol cannot proceed safely."""
+    def __init__(self, code: str, message: str, path: Optional[str] = None) -> None:
+        self.code = code
+        super().__init__(message, path)

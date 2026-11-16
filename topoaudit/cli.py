@@ -3,12 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 from . import __version__
 from .demo import run_demo
 from .errors import AuditError, LedgerError
 from .ledger_query import get_findings, get_run, list_runs
 from .pipeline import execute, render_terminal_summary
+from .publish import FAILPOINTS, Publisher
 from .server import create_server
 from .util import pretty_json
 
@@ -22,8 +23,28 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = sub.add_parser("run", help="执行完整审计")
     run_parser.add_argument("--config", required=True, help="JSON 审计配置路径")
     run_parser.add_argument("--out", required=True, help="输出目录")
+    run_parser.add_argument(
+        "--recover-policy",
+        choices=("roll-forward", "roll-back"),
+        default="roll-forward",
+        help="恢复策略：发现台账已记录但未发布的版本时前滚发布或回退清理",
+    )
+    run_parser.add_argument(
+        "--fail-at",
+        choices=FAILPOINTS,
+        default=None,
+        help="故障注入切点（仅用于发布协议测试）",
+    )
     demo_parser = sub.add_parser("demo", help="运行内置离线演示")
     demo_parser.add_argument("--out", required=True, help="演示输出目录")
+    recover_parser = sub.add_parser("recover", help="恢复输出目录的发布状态")
+    recover_parser.add_argument("--out", required=True, help="输出目录")
+    recover_parser.add_argument(
+        "--policy",
+        choices=("roll-forward", "roll-back"),
+        default="roll-forward",
+        help="恢复策略：前滚发布已验证版本，或回退清理未发布版本",
+    )
     verify_parser = sub.add_parser("verify", help="核对报告与 SQLite 台账")
     verify_parser.add_argument("--report", required=True, help="report.json 路径")
     verify_parser.add_argument("--ledger", required=True, help="audit.sqlite 路径")
@@ -51,6 +72,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return _run(args)
         if args.command == "demo":
             return _demo(args)
+        if args.command == "recover":
+            return _recover(args)
         if args.command == "verify":
             return _verify(args)
         if args.command == "serve":
@@ -66,8 +89,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.print_help()
     return 2
 def _run(args: argparse.Namespace) -> int:
-    report, paths = execute(args.config, args.out)
+    actions: list[dict[str, Any]] = []
+    report, paths = execute(
+        args.config,
+        args.out,
+        recover_policy=args.recover_policy,
+        fail_at=args.fail_at,
+        recovery_actions=actions,
+    )
+    for action in actions:
+        print(
+            f"恢复: {action['route']} {action['result_digest']} - {action['reason']}",
+            file=sys.stderr,
+        )
     print(render_terminal_summary(report, paths))
+    return 0
+def _recover(args: argparse.Namespace) -> int:
+    publisher = Publisher(args.out)
+    actions = publisher.recover(policy=args.policy)
+    if not actions:
+        print("发布状态一致，无需恢复。")
+        return 0
+    print("恢复完成，执行了以下操作：")
+    for action in actions:
+        print(f"  - {action['route']}: {action['result_digest']} ({action['reason']})")
+    current = publisher.current()
+    if current:
+        print(f"当前发布版本: {current['result_digest']}")
     return 0
 def _demo(args: argparse.Namespace) -> int:
     report, paths, expected = run_demo(args.out)
