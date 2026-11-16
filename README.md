@@ -61,21 +61,25 @@ python -m unittest discover -s tests -v
 layers / features : 4 / 33
 findings          : 24（error=15, warning=8, info=1）
 覆盖规则           : 19 / 19
-input_digest      : e3ea9103ea9b01639897200ce167a64d17822b1ac6c796733cd5e49524246b25
-result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f8e73
+input_digest      : ce57b26357e3fffddc4bcb9c27f2fdba563fb3cf2c3bb618a62b98d1eaed648e
+result_digest     : 2e12e98d5c6a6b9c5dd3bd4dfd6d9b8ed891ff160ca937c5312faba4b6b3ccf1
+source_generation: verified（demo-release-v1）
+quality_gate      : allowed
 ```
 
-`result_digest` 是 fixture、配置和规则实现的联合指纹。修改任何一项后，应以新生成的报告和 `verify` 结果为准。
+`result_digest` 是 fixture、配置、发布清单和规则实现的联合指纹。修改任何一项后，应以新生成的报告和 `verify` 结果为准。
+
+内置演示配置带有一份 `fixtures/demo/inputs.manifest.json` 发布清单，因此演示展示的是“同代已证”路径。没有上游清单的本地用法会得到 `source_generation=unverified`、`quality_gate=blocked`，报告明确标注“来源代未证、不可作同代质量放行”。
 
 ## 3. 输出物
 
 | 文件 | 用途 |
 | --- | --- |
-| `report.json` | 确定性机器报告：摘要、图层统计、规则统计、findings、输入摘要、限制说明 |
+| `report.json` | 确定性机器报告：摘要、来源代证据、图层统计、规则统计、findings、输入摘要、限制说明 |
 | `report.md` | 人工评审用 Markdown 报告 |
 | `report.html` | 完全自包含、无脚本、无外部资源的 HTML 报告 |
 | `audit.sqlite` | 运行、图层、findings、输入文件、规则目录快照台账 |
-| `inputs.json` | 本次运行的 config/input/result 摘要与文件级 SHA-256 |
+| `inputs.json` | 本次运行的 config/input/result 摘要、来源代证据与文件级 SHA-256 |
 | `summary.txt` | 终端摘要的文本副本 |
 
 台账以 `result_digest` 为运行主键。相同报告重复写入不会产生重复的 run、layer 或 finding；不同摘要会成为新运行。报告中的 `result_digest` 在写台账前会被重新计算，不一致时拒绝写入。
@@ -178,12 +182,13 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 详见 [`docs/DETERMINISM.md`](docs/DETERMINISM.md)。
 
 - `config_digest`：规范化配置内容的 SHA-256。
-- `input_digest`：配置摘要加各输入文件原始字节 SHA-256 的规范摘要，按图层 ID 排序。
+- `input_digest`：配置摘要加各输入文件原始字节 SHA-256 的规范摘要，按图层 ID 排序；这是内容身份，**不是同代证明**。
+- `source_generation`：清单核验证据，含 `status`（`verified`/`failed`/`unverified`）、`quality_gate`、`generation_id`、`manifest_sha256`、`manifest_digest` 和逐层核对结果。只有 `verified` 才允许 `quality_gate=allowed`。
 - `result_digest`：规范化报告内容（不含 `result_digest` 字段自身）的 SHA-256。
 - `finding_id`：finding 规范载荷 SHA-256 的前 16 位十六进制字符。
 - findings 采用固定的严重级别、规则 ID、图层、要素 ID 排序，不依赖集合遍历顺序。
 - 同一 Python 运行环境、同一配置内容和同一输入文件字节应得到相同的 `result_digest` 和台账主键。
-- SQLite 写入按 `result_digest` 幂等；`verify` 会重新计算摘要并逐项核对 run、图层、findings、输入文件和规则目录快照。
+- SQLite 写入按 `result_digest` 幂等；`verify` 会重新计算摘要并逐项核对 run、图层、findings、输入文件、来源代证据和规则目录快照。
 
 摘要用于完整性比对，不是数字签名，也不提供可信时间戳或来源认证。
 
@@ -218,6 +223,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── roads.geojson
 │   ├── points.csv
 │   ├── empty.geojson
+│   ├── inputs.manifest.json
 │   └── expected_summary.json
 ├── topoaudit/
 │   ├── __init__.py        # 版本与 schema 版本
@@ -227,7 +233,9 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── config_schema.py   # 嵌套配置校验
 │   ├── errors.py          # 稳定错误码
 │   ├── model.py           # 冻结数据模型
-│   ├── loaders.py         # GeoJSON / CSV 只读加载
+│   ├── loaders.py         # GeoJSON / CSV 只读加载与同代绑定
+│   ├── manifest.py        # 上游原子发布清单解析
+│   ├── generation.py      # 同代证据构造与自查
 │   ├── geometry_core.py   # 几何谓词
 │   ├── geometry.py        # 面积、环、包含、压盖视图
 │   ├── normalize.py       # 规范几何签名
@@ -262,6 +270,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - 19 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
 - JSON/Markdown/HTML 报告的确定性、自包含与转义。
 - SQLite 表结构、幂等写入、过滤查询、报告/台账篡改检测。
+- 发布清单同代核验：真同代、v1/v2 混代（每文件稳定但组合不属于同一代）、缺失/额外成员、错误摘要、路径错配、原子替换、清单变更、无清单双路线，以及报告/台账/verify 的来源代状态一致性。
 - 本机 HTTP 服务的健康检查、页面、JSON 过滤、路径穿越/未知路由拒绝、方法限制和回环绑定。
 - CLI demo 端到端、fixture 哈希不变、重复运行一致、输出冲突保护、篡改后 `verify` 返回 1。
 
@@ -269,12 +278,13 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 python -m unittest discover -s tests -v
 ```
 
-工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行，生产代码与测试合计在 2500–4500 行之间。
+工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行。
 
 ## 11. 已知限制
 
 - 仅支持二维欧氏几何；`crs.type=geographic` 只做经纬度边界校验，不做投影或距离换算。
 - 拓扑检查以单图层为边界，不建立跨图层的节点—边—面拓扑，也不做全局连通性、缝隙面积或压盖面积计算。
+- 跨图层审计的“同代”结论只来自上游清单核验；没有清单时，组合 `input_digest` 不能证明同代，结果不可作质量放行。
 - 端点规则只比较线要素端点，不把多边形边界、线内部顶点或另一图层的端点视为连接。
 - 压盖检测先用 bbox 预筛，再做确定性布尔拓扑判断；只报告内部重叠，共边或共点不算压盖。
 - 自相交和近接判定依赖配置容差；改变容差可能改变 findings 和摘要。

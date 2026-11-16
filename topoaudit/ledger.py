@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 from .errors import LedgerError
+from .generation import source_generation_issues
 from .report_json import compute_result_digest
 from .rules_catalog import catalog_rows
 from .util import canonical_json
@@ -15,6 +16,12 @@ SCHEMA_STATEMENTS = (
         run_label TEXT NOT NULL,
         input_digest TEXT NOT NULL,
         config_digest TEXT NOT NULL,
+        source_generation_json TEXT NOT NULL,
+        generation_status TEXT NOT NULL,
+        generation_id TEXT,
+        quality_gate TEXT NOT NULL,
+        manifest_sha256 TEXT,
+        manifest_digest TEXT,
         summary_json TEXT NOT NULL,
         limitations_json TEXT NOT NULL
     )
@@ -51,6 +58,10 @@ SCHEMA_STATEMENTS = (
         format TEXT NOT NULL,
         sha256 TEXT NOT NULL,
         size_bytes INTEGER NOT NULL,
+        manifest_path TEXT,
+        expected_sha256 TEXT,
+        generation_check_status TEXT NOT NULL,
+        reread_consistent INTEGER,
         PRIMARY KEY (result_digest, layer_id),
         FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
     )
@@ -94,8 +105,37 @@ def connect_ledger(path: str | Path, read_only: bool = False) -> sqlite3.Connect
 def initialize_schema(connection: sqlite3.Connection) -> None:
     for statement in SCHEMA_STATEMENTS:
         connection.execute(statement)
-    connection.execute("PRAGMA user_version = 1")
+    _migrate_generation_columns(connection)
+    connection.execute("PRAGMA user_version = 2")
     connection.commit()
+
+def _migrate_generation_columns(connection: sqlite3.Connection) -> None:
+    """Add source-generation columns to ledgers created before schema v2."""
+    additions = {
+        "runs": (
+            ("source_generation_json", "TEXT NOT NULL DEFAULT '{}'"),
+            ("generation_status", "TEXT NOT NULL DEFAULT 'unverified'"),
+            ("generation_id", "TEXT"),
+            ("quality_gate", "TEXT NOT NULL DEFAULT 'blocked'"),
+            ("manifest_sha256", "TEXT"),
+            ("manifest_digest", "TEXT"),
+        ),
+        "input_files": (
+            ("manifest_path", "TEXT"),
+            ("expected_sha256", "TEXT"),
+            ("generation_check_status", "TEXT NOT NULL DEFAULT 'not_applicable'"),
+            ("reread_consistent", "INTEGER"),
+        ),
+    }
+    for table, columns in additions.items():
+        existing = {
+            row["name"] for row in connection.execute(f"PRAGMA table_info({table})")
+        }
+        for name, declaration in columns:
+            if name not in existing:
+                connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {name} {declaration}"
+                )
 
 def write_report(path: str | Path, report: dict[str, Any]) -> None:
     """Persist a report exactly once per ``result_digest``."""
@@ -103,16 +143,31 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
     recomputed = compute_result_digest(report)
     if not digest or digest != recomputed:
         raise LedgerError("TOPO-LED-003", "报告 result_digest 无效，拒绝写入台账", str(path))
+    generation_issues = source_generation_issues(report.get("source_generation"))
+    if generation_issues:
+        raise LedgerError(
+            "TOPO-LED-003",
+            "报告来源代证据不自洽，拒绝写入台账: " + "; ".join(generation_issues),
+            str(path),
+        )
     connection = connect_ledger(path, read_only=False)
     try:
         initialize_schema(connection)
         with connection:
+            source_generation = report.get("source_generation", {})
+            layer_checks = {
+                str(item.get("layer_id")): item
+                for item in source_generation.get("layer_checks", [])
+                if isinstance(item, dict)
+            }
             connection.execute(
                 """
                 INSERT OR IGNORE INTO runs
                 (result_digest, schema_version, run_label, input_digest,
-                 config_digest, summary_json, limitations_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                 config_digest, source_generation_json, generation_status,
+                 generation_id, quality_gate, manifest_sha256, manifest_digest,
+                 summary_json, limitations_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     digest,
@@ -120,6 +175,12 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
                     str(report.get("run_label", "")),
                     str(report.get("input_digest", "")),
                     str(report.get("config_digest", "")),
+                    canonical_json(source_generation),
+                    str(source_generation.get("status", "unverified")),
+                    source_generation.get("generation_id"),
+                    str(source_generation.get("quality_gate", "blocked")),
+                    source_generation.get("manifest_sha256"),
+                    source_generation.get("manifest_digest"),
                     canonical_json(report.get("summary", {})),
                     canonical_json(report.get("limitations", [])),
                 ),
@@ -158,11 +219,14 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
                     ),
                 )
             for item in report.get("input_files", []):
+                check = layer_checks.get(str(item.get("layer_id")), {})
                 connection.execute(
                     """
                     INSERT OR IGNORE INTO input_files
-                    (result_digest, layer_id, path, format, sha256, size_bytes)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (result_digest, layer_id, path, format, sha256, size_bytes,
+                     manifest_path, expected_sha256, generation_check_status,
+                     reread_consistent)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         digest,
@@ -171,6 +235,10 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
                         str(item.get("format", "")),
                         str(item.get("sha256", "")),
                         int(item.get("size_bytes", 0)),
+                        check.get("manifest_path"),
+                        check.get("expected_sha256"),
+                        str(check.get("status", "not_applicable")),
+                        _optional_bool(check.get("reread_consistent")),
                     ),
                 )
             for row in catalog_rows():
@@ -197,3 +265,8 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
         raise LedgerError("TOPO-LED-004", f"写入台账失败: {exc}", str(path)) from exc
     finally:
         connection.close()
+
+def _optional_bool(value: Any) -> Any:
+    if value is None:
+        return None
+    return 1 if bool(value) else 0

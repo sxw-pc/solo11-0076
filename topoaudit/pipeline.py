@@ -40,6 +40,7 @@ def execute(config_path: str | Path, out_dir: str | Path) -> tuple[dict[str, Any
             {
                 "config_digest": report["config_digest"],
                 "input_digest": report["input_digest"],
+                "source_generation": report["source_generation"],
                 "result_digest": report["result_digest"],
                 "input_files": report["input_files"],
             }
@@ -54,22 +55,30 @@ def _refuse_input_overwrite(config: Any, paths: dict[str, Path]) -> None:
     protected = {config.path.resolve()} | {
         layer.resolved_path.resolve() for layer in config.layers
     }
+    manifest_path = config.source_generation.resolved_manifest_path
+    if manifest_path is not None:
+        protected.add(manifest_path.resolve())
     for target in paths.values():
         if target.resolve() in protected:
             raise ReportError(
                 "TOPO-RPT-004",
-                "输出文件与输入或配置文件路径冲突，拒绝覆盖",
+                "输出文件与输入、清单或配置文件路径冲突，拒绝覆盖",
                 str(target),
             )
 
 def render_terminal_summary(report: dict[str, Any], paths: dict[str, Path]) -> str:
     summary = report.get("summary", {})
     severity = summary.get("severity_counts", {})
+    generation = report.get("source_generation", {})
     lines = [
         "矢量拓扑验台 - 审计完成",
         f"run_label       : {report.get('run_label', '')}",
         f"input_digest    : {report.get('input_digest', '')}",
         f"result_digest   : {report.get('result_digest', '')}",
+        f"source_generation: {generation.get('status', 'unverified')}",
+        f"generation_id   : {generation.get('generation_id') or '—'}",
+        f"manifest_sha256 : {generation.get('manifest_sha256') or '—'}",
+        f"quality_gate    : {generation.get('quality_gate', 'blocked')}",
         (
             "layers / features: "
             f"{summary.get('total_layers', 0)} / {summary.get('total_features', 0)}"
@@ -82,8 +91,13 @@ def render_terminal_summary(report: dict[str, Any], paths: dict[str, Path]) -> s
             f"info={severity.get('info', 0)})"
         ),
         "",
-        "输出：",
     ]
+    if generation.get("status") != "verified":
+        lines.append("注意：来源代未获证明，本次结果只供观察，不可作同代质量放行。")
+        for issue in generation.get("issues", []):
+            lines.append(f"  - {issue}")
+        lines.append("")
+    lines.append("输出：")
     for key in ("json", "markdown", "html", "ledger", "inputs", "summary"):
         lines.append(f"  {key:8s}: {paths[key]}")
     return "\n".join(lines) + "\n"

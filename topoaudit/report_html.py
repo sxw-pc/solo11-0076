@@ -37,6 +37,7 @@ def render_html(report: dict[str, Any]) -> str:
     label = report.get("run_label", "")
     summary = report.get("summary", {})
     severity = summary.get("severity_counts", {})
+    generation = report.get("source_generation", {})
     parts: list[str] = [
         "<!doctype html>",
         '<html lang="zh-CN">',
@@ -62,11 +63,31 @@ def render_html(report: dict[str, Any]) -> str:
         '<div class="mono">input_digest: ' + _e(report.get("input_digest", "")) + "</div>",
         '<div class="mono">config_digest: ' + _e(report.get("config_digest", "")) + "</div>",
         '<div class="mono">result_digest: ' + _e(report.get("result_digest", "")) + "</div>",
+        '<div class="mono">source_generation: ' + _e(generation.get("status", "unverified")) + "</div>",
+        '<div class="mono">generation_id: ' + _e(generation.get("generation_id") or "—") + "</div>",
+        '<div class="mono">manifest_sha256: ' + _e(generation.get("manifest_sha256") or "—") + "</div>",
+        '<div class="mono">quality_gate: ' + _e(generation.get("quality_gate", "blocked")) + "</div>",
         "</div>",
     ]
+    if generation.get("status") == "failed":
+        parts.append(
+            '<div class="card" style="margin-top:1rem">'
+            '<p class="error">同代核验失败、不可作同代质量放行。</p>'
+            "<p>所提供清单与本次实际读入的图层字节不一致；"
+            "本报告中的跨图层结论不能用于同代质量放行。</p></div>"
+        )
+    elif generation.get("status") != "verified":
+        parts.append(
+            '<div class="card" style="margin-top:1rem">'
+            '<p class="error">来源代未证、不可作同代质量放行。</p>'
+            "<p>未提供上游发布清单；本报告中的跨图层结论仅供参考。"
+            "input_digest 只表示内容身份，"
+            "不能证明各图层来自同一上游发布代。</p></div>"
+        )
+    parts.extend(_generation_html(generation))
     parts.extend(_layers_html(report.get("layers", [])))
     parts.extend(_rules_html(report.get("rules", [])))
-    parts.extend(_findings_html(report.get("findings", [])))
+    parts.extend(_findings_html(report.get("findings", []), generation))
     parts.extend(_inputs_html(report.get("input_files", [])))
     parts.append("<h2>限制说明</h2><ul>")
     for item in report.get("limitations", []):
@@ -74,7 +95,8 @@ def render_html(report: dict[str, Any]) -> str:
     parts.append("</ul>")
     parts.append(
         "<footer>本页面完全自包含，不加载外部字体、图片、脚本或样式；"
-        "相同输入和配置应产生相同的核心内容与 result_digest。</footer>"
+        "相同输入和配置应产生相同的核心内容与 result_digest。"
+        "input_digest 只表示内容身份，不构成同代证明。</footer>"
     )
     parts.append("</main></body></html>")
     return "\n".join(parts) + "\n"
@@ -84,6 +106,54 @@ def _metric(label: str, value: Any, css_class: str = "") -> str:
         f'<div class="metric"><span class="muted">{_e(label)}</span>'
         f'<b class="{css_class}">{_e(value)}</b></div>'
     )
+
+def _generation_html(generation: dict[str, Any]) -> list[str]:
+    status = str(generation.get("status", "unverified"))
+    proven = generation.get("same_generation_proven") is True
+    lines = [
+        "<h2>来源代核验</h2>",
+        '<div class="card">',
+        f'<p>状态：<b class="{"info" if proven else "error"}">{_e(status)}</b> · '
+        f'同代已证：{_e("是" if proven else "否")} · '
+        f'质量放行：<span class="mono">{_e(generation.get("quality_gate", "blocked"))}</span></p>',
+        f'<p class="muted">策略 {_e(generation.get("policy", "observe"))} · '
+        f'清单 {_e(generation.get("manifest_path") or "—")} · '
+        f'二次读取一致 {_tri(generation.get("manifest_read_consistent"))}</p>',
+    ]
+    issues = generation.get("issues") or []
+    if issues:
+        lines.append("<ul>")
+        for issue in issues:
+            lines.append(f"<li>{_e(issue)}</li>")
+        lines.append("</ul>")
+    lines.append("</div>")
+    checks = generation.get("layer_checks") or []
+    if checks:
+        lines.append(
+            "<table><thead><tr><th>图层</th><th>清单路径</th><th>预期 SHA-256</th>"
+            "<th>实际 SHA-256</th><th>二次读取</th><th>状态</th></tr></thead><tbody>"
+        )
+        for check in checks:
+            lines.append(
+                '<tr><td>{}</td><td class="mono">{}</td><td class="mono">{}</td>'
+                '<td class="mono">{}</td><td>{}</td><td>{}</td></tr>'.format(
+                    _e(check.get("layer_id", "")),
+                    _e(check.get("manifest_path") or "—"),
+                    _e(check.get("expected_sha256") or "—"),
+                    _e(check.get("actual_sha256") or "—"),
+                    _e(_tri(check.get("reread_consistent"))),
+                    _e(check.get("status", "")),
+                )
+            )
+        lines.append("</tbody></table>")
+    return lines
+
+def _tri(value: Any) -> str:
+    if value is True:
+        return "一致"
+    if value is False:
+        return "不一致"
+    return "—"
 
 def _layers_html(layers: list[dict[str, Any]]) -> list[str]:
     lines = ["<h2>图层统计</h2>", "<table><thead><tr><th>图层</th><th>要素</th>",
@@ -122,10 +192,17 @@ def _rules_html(rules: list[dict[str, Any]]) -> list[str]:
     lines.append("</tbody></table>")
     return lines
 
-def _findings_html(findings: list[dict[str, Any]]) -> list[str]:
+def _findings_html(
+    findings: list[dict[str, Any]], generation: dict[str, Any]
+) -> list[str]:
     lines = [f"<h2>Findings（{len(findings)}）</h2>"]
     if not findings:
-        return lines + ["<p>未发现任何问题。</p>"]
+        if generation.get("same_generation_proven") is True:
+            return lines + ["<p>未发现任何问题，且来源代已证，可进入质量放行评审。</p>"]
+        return lines + [
+            '<p class="error">未发现任何问题，但来源代未证，'
+            "不能据此给出可执行的质量通过结论。</p>"
+        ]
     lines.append("<table><thead><tr><th>Finding</th><th>规则</th><th>图层/要素</th><th>证据</th></tr></thead><tbody>")
     for finding in findings:
         severity = str(finding.get("severity", ""))
@@ -165,6 +242,9 @@ def _inputs_html(inputs: list[dict[str, Any]]) -> list[str]:
             )
         )
     lines.append("</tbody></table>")
+    lines.append(
+        '<p class="muted">上表只表示实际读入内容；input_digest 不能单独证明同代。</p>'
+    )
     return lines
 
 def _e(value: Any) -> str:

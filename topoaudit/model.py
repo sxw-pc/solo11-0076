@@ -104,6 +104,17 @@ class LayerConfig:
             result["declared_crs"] = self.declared_crs.as_dict()
         return result
 @dataclass(frozen=True)
+class SourceGenerationConfig:
+    """How this run obtains (or refuses to obtain) a same-generation proof."""
+    policy: str = "observe"
+    manifest_path: Optional[str] = None
+    resolved_manifest_path: Optional[Path] = None
+    def as_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"policy": self.policy}
+        if self.manifest_path is not None:
+            result["manifest"] = self.manifest_path
+        return result
+@dataclass(frozen=True)
 class AuditConfig:
     path: Path
     config_digest: str
@@ -112,6 +123,7 @@ class AuditConfig:
     tolerance: Tolerance
     crs: CRS
     layers: tuple[LayerConfig, ...]
+    source_generation: SourceGenerationConfig = SourceGenerationConfig()
     def as_public_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
@@ -119,6 +131,7 @@ class AuditConfig:
             "tolerance": self.tolerance.as_dict(),
             "crs": self.crs.as_dict(),
             "layers": [layer.as_dict() for layer in self.layers],
+            "source_generation": self.source_generation.as_dict(),
         }
 @dataclass(frozen=True)
 class Geometry:
@@ -152,6 +165,64 @@ class LoadedLayer:
     config: LayerConfig
     features: tuple[Feature, ...]
     input_file: InputFile
+
+@dataclass(frozen=True)
+class LayerGenerationCheck:
+    """Per-layer result of binding parsed bytes to the release manifest."""
+    layer_id: str
+    path: str
+    source_format: str
+    expected_sha256: Optional[str]
+    actual_sha256: Optional[str]
+    status: str
+    reread_consistent: Optional[bool] = None
+    manifest_path: Optional[str] = None
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "layer_id": self.layer_id,
+            "path": self.path,
+            "format": self.source_format,
+            "manifest_path": self.manifest_path,
+            "expected_sha256": self.expected_sha256,
+            "actual_sha256": self.actual_sha256,
+            "status": self.status,
+            "reread_consistent": self.reread_consistent,
+        }
+
+@dataclass(frozen=True)
+class SourceGenerationEvidence:
+    """Audit evidence about whether all layers came from one upstream release."""
+    policy: str
+    status: str
+    quality_gate: str
+    generation_id: Optional[str]
+    manifest_path: Optional[str]
+    manifest_sha256: Optional[str]
+    manifest_digest: Optional[str]
+    manifest_read_consistent: Optional[bool]
+    layer_checks: tuple[LayerGenerationCheck, ...]
+    missing_layer_ids: tuple[str, ...] = ()
+    extra_layer_ids: tuple[str, ...] = ()
+    issues: tuple[str, ...] = ()
+    @property
+    def same_generation_proven(self) -> bool:
+        return self.status == "verified"
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "policy": self.policy,
+            "status": self.status,
+            "same_generation_proven": self.same_generation_proven,
+            "quality_gate": self.quality_gate,
+            "generation_id": self.generation_id,
+            "manifest_path": self.manifest_path,
+            "manifest_sha256": self.manifest_sha256,
+            "manifest_digest": self.manifest_digest,
+            "manifest_read_consistent": self.manifest_read_consistent,
+            "layer_checks": [item.as_dict() for item in self.layer_checks],
+            "missing_layer_ids": list(self.missing_layer_ids),
+            "extra_layer_ids": list(self.extra_layer_ids),
+            "issues": list(self.issues),
+        }
 
 @dataclass(frozen=True)
 class Finding:
@@ -204,6 +275,7 @@ class AuditResult:
     layer_stats: tuple[LayerStats, ...]
     input_files: tuple[InputFile, ...]
     input_digest: str
+    source_generation: SourceGenerationEvidence
     summary: dict[str, Any]
     limitations: tuple[str, ...]
 

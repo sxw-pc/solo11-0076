@@ -82,8 +82,21 @@ def _verify(args: argparse.Namespace) -> int:
         print(
             "校验通过: "
             f"result_digest={result.report_digest} "
-            f"layers={result.layer_count} findings={result.finding_count}"
+            f"layers={result.layer_count} findings={result.finding_count} "
+            f"source_generation={result.generation_status} "
+            f"generation_id={result.generation_id or '—'} "
+            f"quality_gate={result.quality_gate}"
         )
+        if not result.same_generation_proven:
+            reason = (
+                "来源代未证"
+                if result.generation_status == "unverified"
+                else "同代核验失败"
+            )
+            print(
+                f"{reason}：报告与台账一致，但不可作同代质量放行，"
+                "结果只供观察。"
+            )
         return 0
     print("校验失败:", file=sys.stderr)
     for issue in result.issues:
@@ -112,11 +125,15 @@ def _query(args: argparse.Namespace) -> int:
         if not runs:
             print("台账中暂无运行记录。")
             return 0
-        print(f"{'result_digest':64s}  {'layers':>6s}  {'findings':>8s}  run_label")
+        print(
+            f"{'result_digest':64s}  {'layers':>6s}  {'findings':>8s}  "
+            f"{'generation':12s}  {'gate':7s}  run_label"
+        )
         for run in runs:
             print(
                 f"{run['result_digest']:64s}  {run['layer_count']:>6d}  "
-                f"{run['finding_count']:>8d}  {run['run_label']}"
+                f"{run['finding_count']:>8d}  {run['generation_status']:12s}  "
+                f"{run['quality_gate']:7s}  {run['run_label']}"
             )
         return 0
     run = get_run(args.ledger, args.digest)
@@ -135,13 +152,18 @@ def _query(args: argparse.Namespace) -> int:
                 "result_digest": run["result_digest"],
                 "run_label": run["run_label"],
                 "summary": run["summary"],
+                "source_generation": run.get("source_generation", {}),
             },
             "findings": findings,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
+    generation = run.get("source_generation", {})
     print(
         f"run_label={run['run_label']} digest={run['result_digest']} "
+        f"source_generation={generation.get('status', 'unverified')} "
+        f"generation_id={generation.get('generation_id') or '—'} "
+        f"quality_gate={generation.get('quality_gate', 'blocked')} "
         f"findings={len(findings)}"
     )
     for finding in findings:

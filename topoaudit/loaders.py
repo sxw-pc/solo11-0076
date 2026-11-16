@@ -4,13 +4,50 @@ import csv
 import io
 import json
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 from .errors import InputError
-from .model import AuditConfig, Feature, Geometry, InputFile, LayerConfig, LoadedLayer
+from .generation import (
+    build_source_generation_evidence,
+    manifest_was_replaced,
+    reread_layer_hashes,
+)
+from .manifest import POLICY_REQUIRE, ReleaseManifest, read_manifest
+from .model import (
+    AuditConfig,
+    Feature,
+    Geometry,
+    InputFile,
+    LayerConfig,
+    LoadedLayer,
+    SourceGenerationEvidence,
+)
 from .util import canonical_json, sha256_bytes, sha256_text
 _INTEGER_RE = re.compile(r"^[+-]?\d+$")
 
+@dataclass(frozen=True)
+class LoadedInputSet:
+    layers: tuple[LoadedLayer, ...]
+    source_generation: SourceGenerationEvidence
+
 def load_layers(config: AuditConfig) -> tuple[LoadedLayer, ...]:
+    return load_input_set(config).layers
+
+def load_input_set(config: AuditConfig) -> LoadedInputSet:
+    """Load all layers and bind the exact parsed bytes to one release manifest.
+
+    The manifest is read once and parsed from that same byte sequence before
+    any layer is read.  After all layers have been read and parsed, the
+    manifest and every layer file are read again only to detect replacement;
+    the hashes used for parsing remain the ones checked against the manifest.
+    """
+    manifest: Optional[ReleaseManifest] = None
+    manifest_read_consistent: Optional[bool] = None
+    if config.source_generation.resolved_manifest_path is not None:
+        manifest = read_manifest(
+            config.source_generation.resolved_manifest_path,
+            config.source_generation.manifest_path or "$.source_generation.manifest",
+        )
     loaded: list[LoadedLayer] = []
     for index, layer in enumerate(config.layers):
         locator = f"$.layers[{index}]"
@@ -20,7 +57,29 @@ def load_layers(config: AuditConfig) -> tuple[LoadedLayer, ...]:
             loaded.append(_load_csv(layer, locator))
         else:  # pragma: no cover - config parser prevents this
             raise InputError("TOPO-INP-004", f"不支持的输入格式: {layer.source_format}", locator)
-    return tuple(loaded)
+    layers = tuple(loaded)
+    reread_by_layer = reread_layer_hashes(layers)
+    if manifest is not None:
+        manifest_read_consistent = not manifest_was_replaced(
+            config.source_generation.resolved_manifest_path, manifest
+        )
+    evidence = build_source_generation_evidence(
+        policy=config.source_generation.policy,
+        manifest=manifest,
+        loaded=layers,
+        manifest_read_consistent=manifest_read_consistent,
+        reread_by_layer=reread_by_layer,
+    )
+    if (
+        config.source_generation.policy == POLICY_REQUIRE
+        and evidence.status != "verified"
+    ):
+        raise InputError(
+            "TOPO-INP-012",
+            "source_generation.policy=require 要求同代证明，但核验未通过",
+            "$.source_generation",
+        )
+    return LoadedInputSet(layers=layers, source_generation=evidence)
 
 def compute_input_digest(config_digest: str, files: tuple[InputFile, ...]) -> str:
     payload = {
@@ -35,6 +94,7 @@ def compute_input_digest(config_digest: str, files: tuple[InputFile, ...]) -> st
         ],
     }
     return sha256_text(canonical_json(payload))
+
 def _read_source(layer: LayerConfig, locator: str) -> tuple[str, InputFile]:
     path = layer.resolved_path
     if not path.is_file():

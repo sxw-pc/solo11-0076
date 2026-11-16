@@ -74,5 +74,9 @@
         "label": {"type": "string", "required": true}
       }
     }
-  ]
+  ],
+  "source_generation": {
+    "policy": "require",
+    "manifest": "inputs.manifest.json"
+  }
 }

@@ -36,17 +36,20 @@ def render_index(runs: list[dict[str, Any]]) -> str:
         body.append('<div class="card">台账中暂无运行记录。</div>')
     else:
         body.append("<table><thead><tr><th>run_label</th><th>result_digest</th>"
-                    "<th>图层</th><th>findings</th></tr></thead><tbody>")
+                    "<th>图层</th><th>findings</th><th>来源代</th><th>质量放行</th>"
+                    "</tr></thead><tbody>")
         for run in runs:
             digest = _e(run.get("result_digest", ""))
             body.append(
                 '<tr><td>{}</td><td><a class="mono" href="/runs/{}">{}</a></td>'
-                "<td>{}</td><td>{}</td></tr>".format(
+                "<td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
                     _e(run.get("run_label", "")),
                     digest,
                     digest,
                     _e(run.get("layer_count", 0)),
                     _e(run.get("finding_count", 0)),
+                    _e(run.get("generation_status", "unverified")),
+                    _e(run.get("quality_gate", "blocked")),
                 )
             )
         body.append("</tbody></table>")
@@ -66,6 +69,38 @@ def render_run(
     body.append(f'<div class="mono">result_digest: {_e(run.get("result_digest", ""))}</div>')
     body.append(f'<div class="mono">input_digest: {_e(run.get("input_digest", ""))}</div>')
     body.append(f'<div class="mono">config_digest: {_e(run.get("config_digest", ""))}</div>')
+    generation = run.get("source_generation", {})
+    proven = generation.get("same_generation_proven") is True
+    body.append(
+        '<div class="mono">source_generation: {}</div>'.format(
+            _e(generation.get("status", "unverified"))
+        )
+    )
+    body.append(
+        '<div class="mono">generation_id: {}</div>'.format(
+            _e(generation.get("generation_id") or "—")
+        )
+    )
+    body.append(
+        '<div class="mono">manifest_sha256: {}</div>'.format(
+            _e(generation.get("manifest_sha256") or "—")
+        )
+    )
+    body.append(
+        '<div class="mono">quality_gate: {}</div>'.format(
+            _e(generation.get("quality_gate", "blocked"))
+        )
+    )
+    if not proven:
+        reason = (
+            "同代核验失败"
+            if generation.get("status") == "failed"
+            else "来源代未证"
+        )
+        body.append(
+            f'<p class="error">{reason}、不可作同代质量放行；'
+            "以下跨图层结论只供观察。</p>"
+        )
     body.append(
         '<p>图层 {} · 要素 {} · findings {}（<span class="error">error {}</span> / '
         '<span class="warning">warning {}</span> / <span class="info">info {}</span>）</p>'.format(

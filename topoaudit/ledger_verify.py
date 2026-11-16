@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from .errors import LedgerError, ReportError
+from .generation import source_generation_issues
 from .ledger import connect_ledger
 from .report_json import compute_result_digest
 from .util import canonical_json
@@ -16,15 +17,21 @@ class VerificationResult:
     issues: list[str] = field(default_factory=list)
     finding_count: int = 0
     layer_count: int = 0
+    generation_status: str = ""
+    generation_id: str | None = None
+    quality_gate: str = ""
+    same_generation_proven: bool = False
 
 def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -> VerificationResult:
     report = _load_report(Path(report_path))
     digest = str(report.get("result_digest", ""))
     issues: list[str] = []
+    generation = report.get("source_generation")
     if not digest:
         issues.append("报告缺少 result_digest")
     elif compute_result_digest(report) != digest:
         issues.append("报告 result_digest 与报告内容不一致")
+    issues.extend(source_generation_issues(generation))
     try:
         connection = connect_ledger(ledger_path, read_only=True)
     except LedgerError as exc:
@@ -37,21 +44,28 @@ def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -
             issues.append("台账中不存在该 result_digest 的运行记录")
             return VerificationResult(False, digest, issues)
         issues.extend(_compare_run(report, row))
+        issues.extend(_compare_generation(report, row))
         layer_count = _compare_layers(connection, digest, report, issues)
         finding_count = _compare_findings(connection, digest, report, issues)
         _compare_inputs(connection, digest, report, issues)
         _compare_rule_catalog(connection, report, issues)
         _compare_summary(report, issues)
+        _compare_quality_gate(report, issues)
     except sqlite3.Error as exc:
         raise LedgerError("TOPO-LED-005", f"读取台账失败: {exc}", str(ledger_path)) from exc
     finally:
         connection.close()
+    evidence = generation if isinstance(generation, dict) else {}
     return VerificationResult(
         ok=not issues,
         report_digest=digest,
         issues=issues,
         finding_count=finding_count,
         layer_count=layer_count,
+        generation_status=str(evidence.get("status", "")),
+        generation_id=evidence.get("generation_id"),
+        quality_gate=str(evidence.get("quality_gate", "")),
+        same_generation_proven=evidence.get("same_generation_proven") is True,
     )
 def _load_report(path: Path) -> dict[str, Any]:
     if not path.is_file():
@@ -82,6 +96,66 @@ def _compare_run(report: dict[str, Any], row: sqlite3.Row) -> list[str]:
     if canonical_json(summary) != canonical_json(report.get("summary", {})):
         issues.append("runs.summary_json 与报告 summary 不一致")
     return issues
+
+def _compare_generation(report: dict[str, Any], row: sqlite3.Row) -> list[str]:
+    """Ensure the ledger's source-generation columns match the report block."""
+    issues: list[str] = []
+    generation = report.get("source_generation")
+    if not isinstance(generation, dict):
+        issues.append("报告缺少 source_generation 证据")
+        return issues
+    try:
+        ledger_generation = json.loads(row["source_generation_json"])
+    except (json.JSONDecodeError, TypeError):
+        issues.append("runs.source_generation_json 不是有效 JSON")
+        return issues
+    if canonical_json(ledger_generation) != canonical_json(generation):
+        issues.append("runs.source_generation_json 与报告不一致")
+    summary = report.get("summary", {})
+    expected = {
+        "generation_status": str(generation.get("status", "")),
+        "quality_gate": str(generation.get("quality_gate", "")),
+    }
+    for key, value in expected.items():
+        observed = row[key]
+        if (str(observed) if observed is not None else None) != (
+            str(value) if value is not None else None
+        ):
+            issues.append(f"runs.{key} 与报告来源代证据不一致")
+    for key in ("manifest_sha256", "manifest_digest"):
+        observed, value = row[key], generation.get(key)
+        if (observed if observed is not None else None) != value:
+            issues.append(f"runs.{key} 与报告来源代证据不一致")
+    if str(row["generation_id"]) != str(generation.get("generation_id")):
+        issues.append("runs.generation_id 与报告来源代证据不一致")
+    if summary.get("source_generation_status") != generation.get("status"):
+        issues.append("summary.source_generation_status 与 source_generation 不一致")
+    if summary.get("source_generation_id") != generation.get("generation_id"):
+        issues.append("summary.source_generation_id 与 source_generation 不一致")
+    if summary.get("quality_gate") != generation.get("quality_gate"):
+        issues.append("summary.quality_gate 与 source_generation 不一致")
+    return issues
+
+def _compare_quality_gate(report: dict[str, Any], issues: list[str]) -> None:
+    """A blocked gate must not be accompanied by an executable pass verdict."""
+    generation = report.get("source_generation")
+    if not isinstance(generation, dict):
+        return
+    summary = report.get("summary", {})
+    status = generation.get("status")
+    gate = generation.get("quality_gate")
+    if gate == "allowed" and status != "verified":
+        issues.append("质量放行标记与来源代状态矛盾")
+    if status == "unverified":
+        if generation.get("same_generation_proven") is not False:
+            issues.append("来源代未证却标记为已证")
+        if gate != "blocked":
+            issues.append("来源代未证却未阻断质量放行")
+    if summary.get("quality_gate") == "allowed" and status != "verified":
+        issues.append("summary.quality_gate 在来源代未证时错误放行")
+    expected_verdict = "releasable" if gate == "allowed" else "not_releasable"
+    if summary.get("quality_verdict") != expected_verdict:
+        issues.append("summary.quality_verdict 与质量放行状态不一致")
 def _compare_layers(
     connection: sqlite3.Connection,
     digest: str,
@@ -148,18 +222,43 @@ def _compare_inputs(
     issues: list[str],
 ) -> None:
     rows = connection.execute(
-        "SELECT layer_id, path, format, sha256, size_bytes FROM input_files "
-        "WHERE result_digest = ?",
+        "SELECT layer_id, path, format, sha256, size_bytes, manifest_path, "
+        "expected_sha256, generation_check_status, reread_consistent "
+        "FROM input_files WHERE result_digest = ?",
         (digest,),
     ).fetchall()
     ledger = {row["layer_id"]: dict(row) for row in rows}
     reported = {str(item.get("layer_id")): item for item in report.get("input_files", [])}
+    generation = report.get("source_generation", {})
+    checks = {
+        str(item.get("layer_id")): item
+        for item in generation.get("layer_checks", [])
+        if isinstance(item, dict)
+    }
     if set(ledger) != set(reported):
         issues.append("输入文件摘要集合与台账不一致")
         return
     for layer_id in sorted(ledger):
-        if canonical_json(ledger[layer_id]) != canonical_json(reported[layer_id]):
-            issues.append(f"图层 {layer_id} 的输入文件摘要不一致")
+        entry = ledger[layer_id]
+        for key in ("layer_id", "path", "format", "sha256", "size_bytes"):
+            expected = reported[layer_id].get(key)
+            if key == "size_bytes":
+                expected = int(expected or 0)
+            if entry[key] != expected:
+                issues.append(f"图层 {layer_id} 的输入文件摘要不一致")
+                break
+        check = checks.get(layer_id, {})
+        if str(entry["generation_check_status"]) != str(check.get("status", "not_applicable")):
+            issues.append(f"图层 {layer_id} 的来源代核对状态与台账不一致")
+        if entry["manifest_path"] != check.get("manifest_path"):
+            issues.append(f"图层 {layer_id} 的清单路径与台账不一致")
+        if entry["expected_sha256"] != check.get("expected_sha256"):
+            issues.append(f"图层 {layer_id} 的清单摘要与台账不一致")
+        reread = entry["reread_consistent"]
+        if reread is not None:
+            reread = bool(reread)
+        if reread != check.get("reread_consistent"):
+            issues.append(f"图层 {layer_id} 的二次读取一致性与台账不一致")
 def _compare_rule_catalog(
     connection: sqlite3.Connection, report: dict[str, Any], issues: list[str]
 ) -> None:

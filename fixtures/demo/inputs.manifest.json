@@ -1,0 +1,30 @@
+{
+  "generation_id": "demo-release-v1",
+  "layers": [
+    {
+      "format": "geojson",
+      "id": "parcels",
+      "path": "parcels.geojson",
+      "sha256": "a3d2e99f76981f703a0568e85977973b8660520891aabf85c7678833aa6fa532"
+    },
+    {
+      "format": "geojson",
+      "id": "roads",
+      "path": "roads.geojson",
+      "sha256": "700b2cb8c913d60fdf4d6fdc1d0fcbd28e602b87466fc7b2318dccd60581b23e"
+    },
+    {
+      "format": "csv",
+      "id": "points",
+      "path": "points.csv",
+      "sha256": "a053e344a907cf88aca415d8c3853a7c78a08729c99dc78a2e86403b1064b0f0"
+    },
+    {
+      "format": "geojson",
+      "id": "empty",
+      "path": "empty.geojson",
+      "sha256": "b3049ad7a1062091e169bd352424d59721a26b8b6229942aef26d11b0c6a96e1"
+    }
+  ],
+  "schema_version": "1.0"
+}

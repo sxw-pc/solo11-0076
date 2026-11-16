@@ -12,7 +12,8 @@ def list_runs(path: str | Path) -> list[dict[str, Any]]:
         rows = connection.execute(
             """
             SELECT r.result_digest, r.run_label, r.input_digest, r.config_digest,
-                   r.schema_version,
+                   r.schema_version, r.generation_status, r.generation_id,
+                   r.quality_gate,
                    (SELECT COUNT(*) FROM findings f
                     WHERE f.result_digest = r.result_digest) AS finding_count,
                    (SELECT COUNT(*) FROM layers l
@@ -46,6 +47,9 @@ def get_run(path: str | Path, digest: str) -> Optional[dict[str, Any]]:
         result = dict(row)
         result["summary"] = json.loads(result.pop("summary_json"))
         result["limitations"] = json.loads(result.pop("limitations_json"))
+        result["source_generation"] = json.loads(
+            result.pop("source_generation_json", "{}") or "{}"
+        )
         result["layers"] = _layers(connection, digest)
         result["findings_total"] = _findings_count(connection, digest)
         return result
@@ -132,12 +136,19 @@ def get_input_files(path: str | Path, digest: str) -> list[dict[str, Any]]:
     try:
         rows = connection.execute(
             """
-            SELECT layer_id, path, format, sha256, size_bytes
+            SELECT layer_id, path, format, sha256, size_bytes, manifest_path,
+                   expected_sha256, generation_check_status, reread_consistent
             FROM input_files WHERE result_digest = ? ORDER BY layer_id
             """,
             (digest,),
         ).fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            if item["reread_consistent"] is not None:
+                item["reread_consistent"] = bool(item["reread_consistent"])
+            result.append(item)
+        return result
     finally:
         connection.close()
 

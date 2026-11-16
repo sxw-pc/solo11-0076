@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from . import SCHEMA_VERSION
+from .generation import source_generation_issues
 from .model import AuditResult
 from .rules_catalog import RULE_CATALOG
 from .util import canonical_json, pretty_json, sha256_text
@@ -25,6 +26,7 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "run_label": result.config.run_label,
         "config_digest": result.config.config_digest,
         "input_digest": result.input_digest,
+        "source_generation": result.source_generation.as_dict(),
         "summary": result.summary,
         "layers": [item.as_dict() for item in result.layer_stats],
         "rules": rules,
@@ -32,12 +34,18 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "input_files": [item.as_dict() for item in result.input_files],
         "limitations": list(result.limitations),
     }
+    generation_issues = source_generation_issues(payload["source_generation"])
+    if generation_issues:
+        raise ValueError(
+            "来源代证据不自洽: " + "; ".join(generation_issues)
+        )
     digest = compute_result_digest(payload)
     return {
         "schema_version": payload["schema_version"],
         "run_label": payload["run_label"],
         "config_digest": payload["config_digest"],
         "input_digest": payload["input_digest"],
+        "source_generation": payload["source_generation"],
         "result_digest": digest,
         "summary": payload["summary"],
         "layers": payload["layers"],

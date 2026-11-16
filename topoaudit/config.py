@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from .config_schema import parse_crs, parse_layer, parse_tolerance
 from .errors import ConfigError
+from .manifest import parse_source_generation
 from .model import AuditConfig
 from .util import canonical_json, sha256_text
 CONFIG_SCHEMA_VERSION = "1.0"
@@ -26,7 +27,7 @@ def load_config(path: str | Path) -> AuditConfig:
         raise ConfigError("TOPO-CFG-004", "配置根节点必须是 JSON 对象", "$")
     _reject_unknown(
         raw,
-        {"schema_version", "run_label", "tolerance", "crs", "layers"},
+        {"schema_version", "run_label", "tolerance", "crs", "layers", "source_generation"},
         "$",
     )
     schema_version = _require(raw, "schema_version", "$")
@@ -54,12 +55,16 @@ def load_config(path: str | Path) -> AuditConfig:
             )
         seen_ids.add(layer.layer_id)
         layers.append(layer)
-    public = {
+    source_generation = parse_source_generation(
+        raw.get("source_generation"), "$.source_generation", config_path.parent
+    )
+    public: dict[str, Any] = {
         "schema_version": CONFIG_SCHEMA_VERSION,
         "run_label": run_label,
         "tolerance": tolerance.as_dict(),
         "crs": crs.as_dict(),
         "layers": [layer.as_dict() for layer in layers],
+        "source_generation": source_generation.as_dict(),
     }
     config_digest = sha256_text(canonical_json(public))
     return AuditConfig(
@@ -70,6 +75,7 @@ def load_config(path: str | Path) -> AuditConfig:
         tolerance=tolerance,
         crs=crs,
         layers=tuple(layers),
+        source_generation=source_generation,
     )
 def _reject_unknown(raw: dict[str, Any], allowed: set[str], path: str) -> None:
     for key in raw:

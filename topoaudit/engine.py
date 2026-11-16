@@ -1,8 +1,8 @@
 """End-to-end audit execution independent of report and storage formats."""
 from __future__ import annotations
-from typing import Optional
+from typing import Any, Optional
 from .findings import layer_counts, rule_counts, severity_counts
-from .loaders import compute_input_digest, load_layers
+from .loaders import compute_input_digest, load_input_set
 from .model import (
     AuditConfig,
     AuditResult,
@@ -21,15 +21,17 @@ LIMITATIONS = (
     "工具只读输入文件，不自动修复、合并或写回源数据。",
     "仅支持本地 GeoJSON 与 CSV，不连接远程服务或数据库。",
     "环、线和压盖算法面向小团队离线卡点，不面向超大规模数据集。",
+    "input_digest 仅表示内容身份；只有来源代清单核验通过时才能作同代质量放行。",
 )
 
 def run_audit(config: AuditConfig) -> AuditResult:
-    layers = load_layers(config)
+    loaded = load_input_set(config)
+    layers = loaded.layers
     findings = run_rules(config, layers)
     input_files = tuple(layer.input_file for layer in sorted(layers, key=lambda item: item.config.layer_id))
     input_digest = compute_input_digest(config.config_digest, input_files)
     stats = _build_layer_stats(layers, findings)
-    summary = _build_summary(layers, findings, input_files)
+    summary = _build_summary(layers, findings, input_files, loaded.source_generation)
     return AuditResult(
         config=config,
         layers=layers,
@@ -37,6 +39,7 @@ def run_audit(config: AuditConfig) -> AuditResult:
         layer_stats=tuple(stats),
         input_files=input_files,
         input_digest=input_digest,
+        source_generation=loaded.source_generation,
         summary=summary,
         limitations=LIMITATIONS,
     )
@@ -83,6 +86,7 @@ def _build_summary(
     layers: tuple[LoadedLayer, ...],
     findings: tuple[Finding, ...],
     input_files: tuple,
+    source_generation: Any,
 ) -> dict[str, object]:
     codes = rule_counts(findings)
     per_layer = layer_counts(findings)
@@ -98,4 +102,12 @@ def _build_summary(
             layer.config.layer_id: per_layer.get(layer.config.layer_id, 0)
             for layer in layers
         },
+        "source_generation_status": source_generation.status,
+        "source_generation_id": source_generation.generation_id,
+        "quality_gate": source_generation.quality_gate,
+        "quality_verdict": (
+            "releasable"
+            if source_generation.quality_gate == "allowed"
+            else "not_releasable"
+        ),
     }

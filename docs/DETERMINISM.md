@@ -62,7 +62,8 @@ config_digest = SHA-256(canonical_json(public_config))
   - 排序后的 schema；
   - 排序后的规则开关；
   - 排序后的阈值覆盖；
-  - 可选的 `declared_crs`。
+  - 可选的 `declared_crs`；
+- 可选的 `source_generation` 策略与清单配置路径（不含清单内容）。
 
 它**不**包含配置文件绝对路径、绝对解析路径、输入内容或输出目录。因此：
 
@@ -88,7 +89,20 @@ input_digest = SHA-256(canonical_json({
 - CSV 重新编码（即使文本语义相同）也会改变摘要；
 - `input_digest` 同时绑定配置摘要和所有输入文件摘要。
 
-### 3.3 `result_digest`
+**`input_digest` 只是内容身份，不是同代证明。** 它把“实际读到的各文件摘要”组合起来，但无法说明这些文件是否属于上游同一次发布。若上游在两次读取之间切换版本，一层 v1、一层 v2 也能得到完整的 `input_digest`。同代结论只能来自第 3.3 节的清单核验。
+
+### 3.3 `manifest_digest` 与来源代证据
+
+当配置声明 `source_generation.manifest` 时，加载器读取清单一次，对其同一份字节计算：
+
+- `manifest_sha256`：清单原始字节的 SHA-256；
+- `manifest_digest`：规范化清单（`schema_version`、`generation_id`、按 `layer_id` 排序的成员列表）的 SHA-256；
+- `generation_id`：清单声明的发布代；
+- `layer_checks`：逐层的 `manifest_path`、`expected_sha256`、`actual_sha256`、`reread_consistent` 与 `status`。
+
+`source_generation.status` 取 `verified`、`failed` 或 `unverified`；`quality_gate` 取 `allowed` 或 `blocked`，且仅当 `status=verified` 时为 `allowed`。该证据块进入报告载荷，因此 `result_digest` 会随同代核验结果变化。
+
+### 3.4 `result_digest`
 
 ```text
 result_digest = SHA-256(canonical_json(report_without_result_digest))
@@ -97,7 +111,8 @@ result_digest = SHA-256(canonical_json(report_without_result_digest))
 报告载荷包括：
 
 - `schema_version`、`run_label`、`config_digest`、`input_digest`；
-- `summary`（图层/要素/finding 计数、级别计数、按规则/图层计数、输入字节数等）；
+- `source_generation`（策略、状态、发布代、清单摘要、逐层核对）；
+- `summary`（图层/要素/finding 计数、级别计数、按规则/图层计数、输入字节数、来源代状态与质量放行等）；
 - 图层统计（要素数、几何类型计数、finding 数、级别计数、稳定 bbox）；
 - 规则快照（规则 ID、级别、标题、计数）；
 - 完整 findings 列表（含证据）；
@@ -106,7 +121,7 @@ result_digest = SHA-256(canonical_json(report_without_result_digest))
 
 因此，改变任何 finding 内容、计数、图层统计、容差证据或输入摘要，都会改变 `result_digest`。`result_digest` 不包含自身，避免递归。
 
-### 3.4 `finding_id`
+### 3.5 `finding_id`
 
 ```text
 finding_id = first_16_hex(SHA-256(canonical_json({
@@ -218,17 +233,22 @@ severity_rank, rule_id, layer_id, COALESCE(feature_id, ''), finding_id
 3. 查台账中是否存在该摘要的 run；
 4. 比较 `schema_version`、`run_label`、`input_digest`、`config_digest`；
 5. 比较 `summary_json` 与报告 summary；
-6. 比较图层集合和每层统计 JSON；
-7. 比较 finding 集合、finding ID、规则、级别、图层、要素、关联要素和证据；
-8. 比较输入文件集合与每项路径/格式/SHA-256/大小；
-9. 比较规则目录的 `rule_id`、`severity`、`title` 快照；
-10. 用报告 findings 重新汇总总数、级别数和图层数，与 summary 比较。
+6. 校验报告 `source_generation` 证据块自洽（已证/未证/失败与质量放行标记一致）；
+7. 比较台账 `runs` 的来源代列（状态、发布代、质量放行、清单摘要）与报告证据块；
+8. 比较图层集合和每层统计 JSON；
+9. 比较 finding 集合、finding ID、规则、级别、图层、要素、关联要素和证据；
+10. 比较输入文件集合与每项路径/格式/SHA-256/大小，以及每层的清单路径、预期摘要、核对状态与二次读取一致性；
+11. 比较规则目录的 `rule_id`、`severity`、`title` 快照；
+12. 用报告 findings 重新汇总总数、级别数和图层数，与 summary 比较；
+13. 检查 `quality_gate` 不得在来源代未证时标记放行。
 
 一致返回 `0`；任一不一致打印问题并返回 `1`；报告/台账不可读等结构化错误返回 `2`。
 
 校验可以发现：
 
 - 报告字段被修改但摘要未同步；
+- 来源代状态、发布代、清单摘要或质量放行标记在报告与台账之间不一致；
+- 报告把未证或失败的来源代伪造成已证；
 - 报告摘要被替换；
 - 台账 run/layer/finding/input/catalog 内容被修改；
 - summary 与 findings 明细矛盾。
