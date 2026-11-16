@@ -21,6 +21,7 @@ SUPPORTED_SCHEMA_TYPES = (
 )
 SEVERITIES = ("error", "warning", "info")
 SEVERITY_RANK = {"error": 0, "warning": 1, "info": 2}
+NETWORK_CROSSING_POLICIES = ("planar_junction", "grade_unknown")
 @dataclass(frozen=True)
 class Bounds:
     min_x: float
@@ -69,6 +70,19 @@ class FieldSpec:
     def as_dict(self) -> dict[str, Any]:
         return {"type": self.kind, "required": self.required}
 @dataclass(frozen=True)
+class NetworkAuditConfig:
+    """Layer-scoped configuration for the traversable line network audit."""
+    entry_feature_ids: tuple[str, ...]
+    grade_field: Optional[str]
+    crossing_policy: Optional[str]
+    def as_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "entry_feature_ids": list(self.entry_feature_ids),
+            "grade_field": self.grade_field,
+            "crossing_policy": self.crossing_policy,
+        }
+        return result
+@dataclass(frozen=True)
 class LayerConfig:
     layer_id: str
     path: str
@@ -80,6 +94,7 @@ class LayerConfig:
     rules: dict[str, bool]
     threshold_overrides: dict[str, float]
     declared_crs: Optional[DeclaredCRS]
+    network_audit: Optional[NetworkAuditConfig] = None
     def rule_enabled(self, rule_id: str) -> bool:
         return self.rules.get(rule_id, True)
     def effective_tolerance(self, base: Tolerance) -> Tolerance:
@@ -102,6 +117,8 @@ class LayerConfig:
         }
         if self.declared_crs is not None:
             result["declared_crs"] = self.declared_crs.as_dict()
+        if self.network_audit is not None:
+            result["network_audit"] = self.network_audit.as_dict()
         return result
 @dataclass(frozen=True)
 class AuditConfig:
@@ -206,6 +223,7 @@ class AuditResult:
     input_digest: str
     summary: dict[str, Any]
     limitations: tuple[str, ...]
+    network_audits: tuple[dict[str, Any], ...] = ()
 
 def geometry_type_counts(features: tuple[Feature, ...]) -> dict[str, int]:
     counts: dict[str, int] = {}

@@ -1,6 +1,6 @@
 # 规则目录与语义
 
-`topoaudit` 固定提供 19 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
+`topoaudit` 固定提供 25 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
 
 ## 1. 通用语义
 
@@ -36,6 +36,12 @@
 | 17 | `NEAR_MISS_ENDPOINT` | info | 不同要素端点距离大于坐标容差且不超过近接容差 | `endpoint_a`、`endpoint_b`、`distance`、`tolerance` |
 | 18 | `LAYER_CRS_MISMATCH` | error | 图层 `declared_crs` 的名称或类型与全局 `crs` 不一致 | `expected_crs`、`declared_crs` |
 | 19 | `EMPTY_LAYER` | warning | 图层加载后要素数为 0 | `feature_count` |
+| 20 | `NETWORK_ENTRY_NOT_FOUND` | error | `network_audit.entry_feature_ids` 中的 ID 在同图层找不到 | `entry_feature_id`、`known_feature_ids` |
+| 21 | `NETWORK_INVALID_SEGMENT` | error | 线含非有限坐标、点数不足、零长度或自交，禁止参与通行构图 | `feature_id`、`part_index`、`reason`、`segment_pairs`、`coordinate_epsilon` |
+| 22 | `NETWORK_GRADE_UNDUCIDABLE` | warning | 真实接点至少一侧缺少可用层级属性，不臆测连通 | `contact_type`、`coordinate`、`feature_a`、`feature_b`、`grade_a`、`grade_b`、`reason` |
+| 23 | `NETWORK_GRADE_SEPARATED` | info | 两线真实相交但层级不同，按桥/隧处理，交叉处不换线 | `contact_type`、`coordinate`、`feature_a`、`feature_b`、`grade_a`、`grade_b` |
+| 24 | `NETWORK_UNKNOWN_CROSSING` | info | `grade_unknown` 解释下内部穿越，各自连续但不换线，待现场核实 | `contact_type`、`coordinate`、`feature_a`、`feature_b`、`crossing_policy` |
+| 25 | `NETWORK_UNREACHABLE_TERMINAL` | warning | 线网末端不在任一声明入口的可达集合内 | `terminal`、`nearest_reachable_node`、`distance`、`component_id`、`entry_feature_ids`、`segment_evidence` |
 
 ## 3. 逐条说明
 
@@ -178,9 +184,49 @@ coordinate_epsilon < distance <= near_miss_distance
 
 图层成功加载但要素数为 0 时报告。空的 FeatureCollection 是合法输入，不是加载错误。空 CSV（只有表头）同样产生该 finding。
 
+### 3.6 线网可达性规则
+
+线网审计只在图层配置了 `network_audit` 块时运行；未配置的图层、旧配置和旧的端点类 finding 行为完全不变。审计以同图层要素为范围，把有效线部件构造成无向节点-边图，再从声明的入口要素 ID 出发计算可达末端。
+
+**真实接点（构图事实，与解释策略无关）**
+
+只有满足下列几何事实之一的接触才会产生节点关联，包围盒相交或 `coordinate_epsilon` 之外的接近永远不连通：
+
+- 两条线的端点在 `coordinate_epsilon` 内重合（端点接触）；
+- 一条线的端点落在另一条线的中段（T 接，含端点落在另一线中间顶点的情形）；
+- 两条线在内部真正交叉（含交叉点为中间顶点的十字线网）；
+- 两条共线线段存在真实重叠区间。
+
+接点级的“内部”判定按整条 polyline 而不是单段进行：十字线网中位于中间顶点的交叉点相对两条完整线都是内部点。
+
+**层级规则（配置 `grade_field`）**
+
+- 两侧层级属性都存在且相等：同层内部交叉默认接为可通行接点；
+- 两侧都存在但不相等：按桥/隧分离，交叉处不换线，产生 `NETWORK_GRADE_SEPARATED`（info）；
+- 至少一侧属性缺失、为 null、空白或非标量：产生 `NETWORK_GRADE_UNDUCIDABLE`（warning），两侧不换线，绝不臆测为可通行；
+- 端点接触同样按上述层级规则核对。
+
+**无层级的平面图纸（配置 `crossing_policy`，与 `grade_field` 互斥）**
+
+- `planar_junction`：真实内部交叉接为通路。十字线网中从西端入口可以到达北端；
+- `grade_unknown`：两条穿越线段各自保持连续，内部交叉处不换线并产生 `NETWORK_UNKNOWN_CROSSING`（info，标注待现场核实）。同一十字线网中西端入口不可到达北端；
+- 两种解释都不接通容差外侧的近接线，也都保留 T 接和端点接触的真实端点证据。
+
+**`NETWORK_INVALID_SEGMENT`（坏几何保守原则）**
+
+出现下列任一情况的线部件不参与构图：坐标含 `NaN`/`Infinity`、点数不足 2、存在零长度线段、非相邻线段自交（蝴蝶结等）。坏几何不会在网络中产生边，因此不可能把原本不通的两侧虚连；每个受影响要素聚合一条 finding，证据给出部件、原因和自交线段对。
+
+**`NETWORK_ENTRY_NOT_FOUND`**
+
+入口 ID 在同图层要素中不存在，或只对应无效部件时产生；该入口不参与 BFS，并在报告的 `missing_entry_feature_ids` 中留痕。
+
+**`NETWORK_UNREACHABLE_TERMINAL` 与可复核证据**
+
+末端定义为带线端点的节点（闭合环无端节点）。对任一入口 BFS 不可达的末端产生 warning，证据包含：末端坐标与所属部件、所属连通分量、最近的可达节点及距离、阻断接点明细（层级/策略判定）以及该末端所在要素的原始线段索引和坐标区间。完整网络（节点、边、分量、接点、入口-末端矩阵）写入 JSON 报告的 `network_audit` 段和 SQLite 的 `network_audit_runs`、`network_audit_reachability` 两张表，`verify` 会逐行交叉核对。
+
 ## 4. 演示 fixture 覆盖
 
-`fixtures/demo` 的预期 finding 计数为 24，覆盖全部 19 条规则：
+`fixtures/demo` 的预期 finding 计数为 24，覆盖全部 19 条传统规则；6 条 `NETWORK_*` 规则仅在图层声明 `network_audit` 时运行，因此演示数据中计数为 0：
 
 | 规则 | 计数 | 规则 | 计数 | 规则 | 计数 |
 | --- | ---: | --- | ---: | --- | ---: |
@@ -197,7 +243,7 @@ coordinate_epsilon < distance <= near_miss_distance
 ## 5. 已知判定限制
 
 - 所有检查是二维平面的，不进行大地测量或投影换算。
-- 不执行完整平面图构建，不检查节点度数、连通分量、悬挂链或面网闭合环。
+- 传统规则不执行完整平面图构建；线网可达性审计仅在显式配置 `network_audit` 的图层内构建通行网络，不计算节点度数统计、面网闭合环或跨图层网络。
 - 不检查跨图层拓扑、跨图层重复、跨图层压盖。
 - 不检查 Z/M 值、坐标精度来源、拓扑规则库或 OGC 简单要素的全部合法性问题。
 - 压盖是保守布尔判定，不计算面积；狭长是面积/周长启发式。

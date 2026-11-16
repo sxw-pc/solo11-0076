@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"line_id": "MG-KNOWN", "grade": "L1"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 10], [10, 10], [20, 10]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "MG-UNKNOWN"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[10, 0], [10, 10], [10, 20]]
+      }
+    }
+  ]
+}

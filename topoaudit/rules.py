@@ -4,10 +4,18 @@ from .findings import FindingCollector, sort_findings
 from .model import AuditConfig, Finding, LoadedLayer
 from .rule_geometry import check_geometry
 from .rule_schema import check_schema
-from .rule_topology import check_layer_topology
+from .rule_topology import audit_line_network, check_layer_topology
 
 def run_rules(config: AuditConfig, layers: tuple[LoadedLayer, ...]) -> tuple[Finding, ...]:
+    findings, _ = run_rules_with_network(config, layers)
+    return tuple(sort_findings(findings))
+
+def run_rules_with_network(
+    config: AuditConfig, layers: tuple[LoadedLayer, ...]
+) -> tuple[tuple[Finding, ...], tuple[dict, ...]]:
+    """Run every enabled rule plus the config-driven line-network audits."""
     collector = FindingCollector()
+    network_reports: list[dict] = []
     for layer in layers:
         tolerance = layer.config.effective_tolerance(config.tolerance)
         _check_layer_crs(layer, config, collector)
@@ -22,7 +30,12 @@ def run_rules(config: AuditConfig, layers: tuple[LoadedLayer, ...]) -> tuple[Fin
             check_schema(feature, layer.config, collector)
             check_geometry(feature, layer.config, config, tolerance, collector)
         check_layer_topology(layer.features, layer.config, tolerance, collector)
-    return tuple(sort_findings(collector.findings()))
+        report = audit_line_network(
+            layer.features, layer.config, tolerance, collector
+        )
+        if report is not None:
+            network_reports.append(report)
+    return tuple(sort_findings(collector.findings())), tuple(network_reports)
 
 def _check_layer_crs(
     layer: LoadedLayer, config: AuditConfig, collector: FindingCollector

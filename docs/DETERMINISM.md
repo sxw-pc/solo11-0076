@@ -101,6 +101,7 @@ result_digest = SHA-256(canonical_json(report_without_result_digest))
 - 图层统计（要素数、几何类型计数、finding 数、级别计数、稳定 bbox）；
 - 规则快照（规则 ID、级别、标题、计数）；
 - 完整 findings 列表（含证据）；
+- `network_audit` 段：节点、边、连通分量、阻断接点、入口-末端可达矩阵和原始线段证据（仅声明 `network_audit` 的图层）；
 - 输入文件摘要；
 - 限制说明。
 

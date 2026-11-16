@@ -162,3 +162,70 @@ def get_rule_catalog(path: str | Path) -> list[dict[str, Any]]:
         ]
     finally:
         connection.close()
+
+
+def get_network_audit(
+    path: str | Path, digest: str, layer_id: Optional[str] = None
+) -> list[dict[str, Any]]:
+    """Return the stored line-network audit reports for one run."""
+    connection = connect_ledger(path, read_only=True)
+    try:
+        if layer_id is not None:
+            rows = connection.execute(
+                """
+                SELECT report_json FROM network_audit_runs
+                WHERE result_digest = ? AND layer_id = ?
+                ORDER BY layer_id
+                """,
+                (digest, layer_id),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT report_json FROM network_audit_runs
+                WHERE result_digest = ? ORDER BY layer_id
+                """,
+                (digest,),
+            ).fetchall()
+        return [json.loads(row["report_json"]) for row in rows]
+    finally:
+        connection.close()
+
+
+def get_network_reachability(
+    path: str | Path,
+    digest: str,
+    layer_id: Optional[str] = None,
+    reachable: Optional[bool] = None,
+) -> list[dict[str, Any]]:
+    """Return entry-to-terminal reachability rows for review tooling."""
+    connection = connect_ledger(path, read_only=True)
+    try:
+        clauses = ["result_digest = ?"]
+        params: list[Any] = [digest]
+        if layer_id is not None:
+            clauses.append("layer_id = ?")
+            params.append(layer_id)
+        if reachable is not None:
+            clauses.append("reachable = ?")
+            params.append(1 if reachable else 0)
+        query = (
+            "SELECT layer_id, entry_feature_id, terminal_id, terminal_feature_id, "
+            "reachable, detail_json FROM network_audit_reachability WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY layer_id, entry_feature_id, terminal_id"
+        )
+        rows = connection.execute(query, tuple(params)).fetchall()
+        return [
+            {
+                "layer_id": row["layer_id"],
+                "entry_feature_id": row["entry_feature_id"],
+                "terminal_id": row["terminal_id"],
+                "terminal_feature_id": row["terminal_feature_id"],
+                "reachable": bool(row["reachable"]),
+                "detail": json.loads(row["detail_json"]),
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()

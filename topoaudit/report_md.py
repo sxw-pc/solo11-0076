@@ -28,6 +28,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.extend(_render_layers(report.get("layers", [])))
     lines.extend(_render_rules(report.get("rules", [])))
+    lines.extend(_render_network_audit(report.get("network_audit", [])))
     lines.extend(_render_findings(report.get("findings", [])))
     lines.extend(_render_inputs(report.get("input_files", [])))
     lines.append("## 限制说明")
@@ -78,6 +79,93 @@ def _render_rules(rules: list[dict[str, Any]]) -> list[str]:
             f"{_cell(rule.get('title', ''))} | {rule.get('count', 0)} |"
         )
     lines.append("")
+    return lines
+
+def _render_network_audit(networks: list[dict[str, Any]]) -> list[str]:
+    lines = [f"## 线网可达性审计（{len(networks)}）", ""]
+    if not networks:
+        lines.append("未配置线网可达性审计的图层。")
+        lines.append("")
+        return lines
+    for network in networks:
+        lines.append(f"### 图层 `{_cell(network.get('layer_id', ''))}`")
+        lines.append("")
+        mode = (
+            f"grade_field={network.get('grade_field')}"
+            if network.get("grade_field")
+            else f"crossing_policy={network.get('crossing_policy')}"
+        )
+        lines.append(
+            "| 入口要素 | 节点 | 边 | 连通分量 | 有效部件 | 无效部件 | 解释模式 |"
+        )
+        lines.append("| --- | ---: | ---: | ---: | ---: | ---: | --- |")
+        lines.append(
+            "| {entries} | {nodes} | {edges} | {components} | {valid} | {invalid} | {mode} |".format(
+                entries=_cell(", ".join(network.get("entry_feature_ids", []))),
+                nodes=network.get("node_count", 0),
+                edges=network.get("edge_count", 0),
+                components=len(network.get("connected_components", [])),
+                valid=network.get("valid_part_count", 0),
+                invalid=network.get("invalid_part_count", 0),
+                mode=_cell(mode),
+            )
+        )
+        lines.append("")
+        lines.append("| 入口 | 可达末端 | 不可达末端 |")
+        lines.append("| --- | --- | --- |")
+        for entry in network.get("entry_reachability", []):
+            lines.append(
+                "| {entry} | {reachable} | {unreachable} |".format(
+                    entry=_cell(entry.get("entry_feature_id", "")),
+                    reachable=_cell(", ".join(entry.get("reachable_terminal_ids", [])) or "—"),
+                    unreachable=_cell(
+                        ", ".join(entry.get("unreachable_terminal_ids", [])) or "—"
+                    ),
+                )
+            )
+        lines.append("")
+        blocked = network.get("blocked_contacts", [])
+        if blocked:
+            lines.append(f"阻断/待核实接点（{len(blocked)}）：")
+            lines.append("")
+            lines.append("| 类型 | 坐标 | 要素 A | 要素 B | 判定 | 原因 |")
+            lines.append("| --- | --- | --- | --- | --- | --- |")
+            for contact in blocked:
+                lines.append(
+                    "| {kind} | `{coordinate}` | {a} | {b} | {decision} | {reason} |".format(
+                        kind=_cell(contact.get("contact_type", "")),
+                        coordinate=_cell(canonical_json(contact.get("coordinate", []))),
+                        a=_cell(contact.get("feature_a", "")),
+                        b=_cell(contact.get("feature_b", "")),
+                        decision=_cell(contact.get("decision", "")),
+                        reason=_cell(contact.get("reason", "")),
+                    )
+                )
+            lines.append("")
+        unreachable = network.get("unreachable_terminals", [])
+        if unreachable:
+            lines.append(f"不可达末端证据（{len(unreachable)}）：")
+            lines.append("")
+            lines.append("| 末端 | 坐标 | 最近可达节点 | 距离 | 分量 | 原始线段证据 |")
+            lines.append("| --- | --- | --- | ---: | --- | --- |")
+            for terminal in unreachable:
+                evidence = canonical_json(
+                    {
+                        "blocked_contacts": terminal.get("blocked_contacts", []),
+                        "segment_evidence": terminal.get("segment_evidence", []),
+                    }
+                )
+                lines.append(
+                    "| {terminal} | `{coordinate}` | {nearest} | {distance} | {component} | `{evidence}` |".format(
+                        terminal=_cell(terminal.get("terminal_id", "")),
+                        coordinate=_cell(canonical_json(terminal.get("coordinate", []))),
+                        nearest=_cell(terminal.get("nearest_reachable_node") or "—"),
+                        distance=terminal.get("distance_to_network"),
+                        component=_cell(terminal.get("component_id") or "—"),
+                        evidence=_cell(evidence),
+                    )
+                )
+            lines.append("")
     return lines
 
 def _render_findings(findings: list[dict[str, Any]]) -> list[str]:

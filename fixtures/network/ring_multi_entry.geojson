@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"line_id": "RG-RING"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "RG-SPUR"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[20, 0], [30, -10]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "RG-MULTI"},
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [[40, 0], [50, 0], [60, 0]],
+          [[50, 0], [50, 10]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "RG-ISLAND"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[80, 80], [90, 90]]
+      }
+    }
+  ]
+}

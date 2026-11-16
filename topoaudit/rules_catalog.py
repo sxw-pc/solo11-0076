@@ -37,6 +37,12 @@ _RULE_ROWS = (
     ("NEAR_MISS_ENDPOINT", "info", "端点近接", "不同线的端点距离超过坐标容差但不超过近接容差。", "endpoint_a,endpoint_b,distance,tolerance"),
     ("LAYER_CRS_MISMATCH", "error", "图层 CRS 声明不一致", "图层 declared_crs 与全局 crs 名称或类型不一致。", "expected_crs,declared_crs"),
     ("EMPTY_LAYER", "warning", "空图层", "图层加载后不包含任何要素。", "feature_count"),
+    ("NETWORK_ENTRY_NOT_FOUND", "error", "网络入口要素缺失", "network_audit.entry_feature_ids 中的 ID 在同图层要素中找不到。", "entry_feature_id,known_feature_ids"),
+    ("NETWORK_INVALID_SEGMENT", "error", "网络无效线段", "线含非有限坐标、点数不足、零长度或自交，禁止参与通行网络构图，避免虚连。", "feature_id,part_index,reason,segment_pairs,coordinate_epsilon"),
+    ("NETWORK_GRADE_UNDUCIDABLE", "warning", "层级缺失导致接点不可判定", "真实接点至少一侧缺少可用通行层级属性，不能臆测为可通行，两侧不换线。", "contact_type,coordinate,feature_a,feature_b,grade_a,grade_b,reason"),
+    ("NETWORK_GRADE_SEPARATED", "info", "跨层接点分离", "两条线真实相交但声明层级不同，按桥/隧处理：交叉处不换线。", "contact_type,coordinate,feature_a,feature_b,grade_a,grade_b"),
+    ("NETWORK_UNKNOWN_CROSSING", "info", "交叉待现场核实", "grade_unknown 解释下两条线在内部真实穿越，各自保持连续但不在交叉处换线。", "contact_type,coordinate,feature_a,feature_b,crossing_policy"),
+    ("NETWORK_UNREACHABLE_TERMINAL", "warning", "入口不可达末端", "线网末端不在任一已声明入口的通行可达集合内，证据给出断开位置与原始线段。", "terminal,nearest_reachable_node,distance,component_id,entry_feature_ids,segment_evidence"),
 )
 RULE_CATALOG: dict[str, RuleMeta] = {
     row[0]: RuleMeta(row[0], row[1], row[2], row[3], tuple(row[4].split(",")))

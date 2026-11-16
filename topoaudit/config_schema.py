@@ -12,6 +12,7 @@ from .model import (
     DeclaredCRS,
     FieldSpec,
     LayerConfig,
+    NetworkAuditConfig,
     Tolerance,
 )
 from .rules_catalog import RULE_IDS
@@ -71,6 +72,7 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
         "rules",
         "thresholds",
         "declared_crs",
+        "network_audit",
     }
     obj = _object(raw, path, allowed)
     layer_id = _nonempty_string(_require(obj, "id", path), f"{path}.id")
@@ -101,6 +103,7 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
     rules = _parse_rules(obj.get("rules", {}), f"{path}.rules")
     thresholds = _parse_layer_thresholds(obj.get("thresholds", {}), f"{path}.thresholds")
     declared = _parse_declared_crs(obj.get("declared_crs"), f"{path}.declared_crs")
+    network = _parse_network_audit(obj.get("network_audit"), f"{path}.network_audit")
     return LayerConfig(
         layer_id=layer_id,
         path=source,
@@ -112,6 +115,60 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
         rules=rules,
         threshold_overrides=thresholds,
         declared_crs=declared,
+        network_audit=network,
+    )
+
+def _parse_network_audit(raw: Any, path: str) -> NetworkAuditConfig | None:
+    if raw is None:
+        return None
+    obj = _object(raw, path, {"entry_feature_ids", "grade_field", "crossing_policy"})
+    entries_raw = _require(obj, "entry_feature_ids", path)
+    if not isinstance(entries_raw, list) or not entries_raw:
+        raise ConfigError(
+            "TOPO-CFG-006", "entry_feature_ids 必须是非空字符串数组", f"{path}.entry_feature_ids"
+        )
+    entry_ids: list[str] = []
+    for index, item in enumerate(entries_raw):
+        text = _string(item, f"{path}.entry_feature_ids[{index}]").strip()
+        if not text:
+            raise ConfigError(
+                "TOPO-CFG-006",
+                "入口要素 ID 不能为空",
+                f"{path}.entry_feature_ids[{index}]",
+            )
+        entry_ids.append(text)
+    if len(set(entry_ids)) != len(entry_ids):
+        raise ConfigError(
+            "TOPO-CFG-006", "entry_feature_ids 不能重复", f"{path}.entry_feature_ids"
+        )
+    grade_field = None
+    if "grade_field" in obj and obj["grade_field"] is not None:
+        grade_field = _nonempty_string(obj["grade_field"], f"{path}.grade_field")
+    crossing_policy = None
+    if "crossing_policy" in obj and obj["crossing_policy"] is not None:
+        crossing_policy = _string(obj["crossing_policy"], f"{path}.crossing_policy")
+        if crossing_policy not in ("planar_junction", "grade_unknown"):
+            raise ConfigError(
+                "TOPO-CFG-006",
+                "crossing_policy 只能是 planar_junction 或 grade_unknown",
+                f"{path}.crossing_policy",
+            )
+    if grade_field is not None and crossing_policy is not None:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "grade_field 与 crossing_policy 互斥：声明层级后由层级规则决定交叉",
+            path,
+        )
+    if grade_field is None and crossing_policy is None:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "network_audit 必须声明 grade_field 或 crossing_policy 之一",
+            path,
+        )
+    return NetworkAuditConfig(
+        entry_feature_ids=tuple(entry_ids),
+        grade_field=grade_field,
+        crossing_policy=crossing_policy,
     )
 def _parse_schema(raw: Any, path: str) -> dict[str, FieldSpec]:
     if not isinstance(raw, dict):

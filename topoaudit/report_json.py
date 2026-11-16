@@ -29,6 +29,7 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "layers": [item.as_dict() for item in result.layer_stats],
         "rules": rules,
         "findings": [item.as_dict() for item in result.findings],
+        "network_audit": [item for item in result.network_audits],
         "input_files": [item.as_dict() for item in result.input_files],
         "limitations": list(result.limitations),
     }
@@ -43,6 +44,7 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "layers": payload["layers"],
         "rules": payload["rules"],
         "findings": payload["findings"],
+        "network_audit": payload["network_audit"],
         "input_files": payload["input_files"],
         "limitations": payload["limitations"],
     }

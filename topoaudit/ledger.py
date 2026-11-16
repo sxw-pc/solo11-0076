@@ -64,9 +64,32 @@ SCHEMA_STATEMENTS = (
         evidence_fields_json TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS network_audit_runs (
+        result_digest TEXT NOT NULL,
+        layer_id TEXT NOT NULL,
+        report_json TEXT NOT NULL,
+        PRIMARY KEY (result_digest, layer_id),
+        FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS network_audit_reachability (
+        result_digest TEXT NOT NULL,
+        layer_id TEXT NOT NULL,
+        entry_feature_id TEXT NOT NULL,
+        terminal_id TEXT NOT NULL,
+        terminal_feature_id TEXT NOT NULL,
+        reachable INTEGER NOT NULL,
+        detail_json TEXT NOT NULL,
+        PRIMARY KEY (result_digest, layer_id, entry_feature_id, terminal_id),
+        FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(result_digest, severity)",
     "CREATE INDEX IF NOT EXISTS idx_findings_layer ON findings(result_digest, layer_id)",
     "CREATE INDEX IF NOT EXISTS idx_findings_rule ON findings(result_digest, rule_id)",
+    "CREATE INDEX IF NOT EXISTS idx_network_reach ON network_audit_reachability(result_digest, layer_id, reachable)",
 )
 
 def connect_ledger(path: str | Path, read_only: bool = False) -> sqlite3.Connection:
@@ -193,6 +216,37 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
                         canonical_json(row["evidence_fields"]),
                     ),
                 )
+            for network in report.get("network_audit", []):
+                layer_id = str(network.get("layer_id", ""))
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO network_audit_runs
+                    (result_digest, layer_id, report_json)
+                    VALUES (?, ?, ?)
+                    """,
+                    (digest, layer_id, canonical_json(network)),
+                )
+                for entry in network.get("entry_reachability", []):
+                    entry_id = str(entry.get("entry_feature_id", ""))
+                    for terminal in entry.get("terminals", []):
+                        connection.execute(
+                            """
+                            INSERT OR IGNORE INTO network_audit_reachability
+                            (result_digest, layer_id, entry_feature_id,
+                             terminal_id, terminal_feature_id, reachable,
+                             detail_json)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                digest,
+                                layer_id,
+                                entry_id,
+                                str(terminal.get("terminal_id", "")),
+                                str(terminal.get("feature_id", "")),
+                                1 if terminal.get("reachable") else 0,
+                                canonical_json(terminal),
+                            ),
+                        )
     except sqlite3.Error as exc:
         raise LedgerError("TOPO-LED-004", f"写入台账失败: {exc}", str(path)) from exc
     finally:

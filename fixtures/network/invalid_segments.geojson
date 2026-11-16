@@ -1,0 +1,45 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"line_id": "IV-WEST"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 10], [10, 10]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "IV-BOWTIE"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[10, 0], [30, 20], [10, 20], [30, 0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "IV-EAST"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[30, 10], [40, 10]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "IV-POINT"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[5, 25]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "IV-NAN"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 30], [NaN, 35], [10, 40]]
+      }
+    }
+  ]
+}

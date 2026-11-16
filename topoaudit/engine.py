@@ -12,7 +12,7 @@ from .model import (
     geometry_type_counts,
 )
 from .normalize import finite_bbox
-from .rules import run_rules
+from .rules import run_rules_with_network
 from .util import stable_round
 LIMITATIONS = (
     "仅处理二维欧氏几何；不进行坐标参考系转换或投影计算。",
@@ -25,7 +25,7 @@ LIMITATIONS = (
 
 def run_audit(config: AuditConfig) -> AuditResult:
     layers = load_layers(config)
-    findings = run_rules(config, layers)
+    findings, network_audits = run_rules_with_network(config, layers)
     input_files = tuple(layer.input_file for layer in sorted(layers, key=lambda item: item.config.layer_id))
     input_digest = compute_input_digest(config.config_digest, input_files)
     stats = _build_layer_stats(layers, findings)
@@ -39,6 +39,7 @@ def run_audit(config: AuditConfig) -> AuditResult:
         input_digest=input_digest,
         summary=summary,
         limitations=LIMITATIONS,
+        network_audits=network_audits,
     )
 def _build_layer_stats(
     layers: tuple[LoadedLayer, ...], findings: tuple[Finding, ...]

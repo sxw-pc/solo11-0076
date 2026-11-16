@@ -41,6 +41,7 @@ def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -
         finding_count = _compare_findings(connection, digest, report, issues)
         _compare_inputs(connection, digest, report, issues)
         _compare_rule_catalog(connection, report, issues)
+        _compare_network_audit(connection, digest, report, issues)
         _compare_summary(report, issues)
     except sqlite3.Error as exc:
         raise LedgerError("TOPO-LED-005", f"读取台账失败: {exc}", str(ledger_path)) from exc
@@ -194,3 +195,62 @@ def _compare_summary(report: dict[str, Any], issues: list[str]) -> None:
         issues.append("summary.severity_counts 与报告 findings 不一致")
     if summary.get("total_layers") != len(report.get("layers", [])):
         issues.append("summary.total_layers 与报告 layers 数量不一致")
+
+
+def _compare_network_audit(
+    connection: sqlite3.Connection,
+    digest: str,
+    report: dict[str, Any],
+    issues: list[str],
+) -> None:
+    reported = {
+        str(item.get("layer_id")): item for item in report.get("network_audit", [])
+    }
+    rows = connection.execute(
+        "SELECT layer_id, report_json FROM network_audit_runs WHERE result_digest = ?",
+        (digest,),
+    ).fetchall()
+    ledger = {row["layer_id"]: json.loads(row["report_json"]) for row in rows}
+    if set(ledger) != set(reported):
+        issues.append("台账 network_audit_runs 与报告 network_audit 图层集合不一致")
+        return
+    for layer_id in sorted(ledger):
+        if canonical_json(ledger[layer_id]) != canonical_json(reported[layer_id]):
+            issues.append(f"图层 {layer_id} 的网络审计报告与台账不一致")
+    reach_rows = connection.execute(
+        """
+        SELECT layer_id, entry_feature_id, terminal_id, terminal_feature_id,
+               reachable, detail_json
+        FROM network_audit_reachability WHERE result_digest = ?
+        """,
+        (digest,),
+    ).fetchall()
+    ledger_pairs = {
+        (
+            row["layer_id"],
+            row["entry_feature_id"],
+            row["terminal_id"],
+        ): (row["reachable"], json.loads(row["detail_json"]))
+        for row in reach_rows
+    }
+    report_pairs: dict[tuple[str, str, str], tuple[int, dict[str, Any]]] = {}
+    for network in report.get("network_audit", []):
+        layer_id = str(network.get("layer_id"))
+        for entry in network.get("entry_reachability", []):
+            entry_id = str(entry.get("entry_feature_id"))
+            for terminal in entry.get("terminals", []):
+                key = (layer_id, entry_id, str(terminal.get("terminal_id")))
+                report_pairs[key] = (
+                    1 if terminal.get("reachable") else 0,
+                    terminal,
+                )
+    if set(ledger_pairs) != set(report_pairs):
+        issues.append("台账 network_audit_reachability 与报告入口-末端矩阵不一致")
+        return
+    for key in sorted(ledger_pairs):
+        ledger_flag, ledger_detail = ledger_pairs[key]
+        report_flag, report_detail = report_pairs[key]
+        if ledger_flag != report_flag:
+            issues.append(f"网络可达矩阵 {key} 的 reachable 标记与台账不一致")
+        if canonical_json(ledger_detail) != canonical_json(report_detail):
+            issues.append(f"网络可达矩阵 {key} 的末端明细与台账不一致")

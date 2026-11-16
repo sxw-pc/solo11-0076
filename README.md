@@ -1,6 +1,6 @@
 # 矢量拓扑验台（topoaudit）
 
-一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 19 条规则，输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
+一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 25 条规则（含 6 条配置驱动的线网可达性规则），输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
 
 - 项目 slug：`topoaudit`
 - Python：3.10+
@@ -62,7 +62,7 @@ layers / features : 4 / 33
 findings          : 24（error=15, warning=8, info=1）
 覆盖规则           : 19 / 19
 input_digest      : e3ea9103ea9b01639897200ce167a64d17822b1ac6c796733cd5e49524246b25
-result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f8e73
+result_digest     : 7c35dca0a6ab6aa9d1b932fe23b2e4aefed837591ff022125a2d6f85a4ded055
 ```
 
 `result_digest` 是 fixture、配置和规则实现的联合指纹。修改任何一项后，应以新生成的报告和 `verify` 结果为准。
@@ -74,11 +74,28 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 | `report.json` | 确定性机器报告：摘要、图层统计、规则统计、findings、输入摘要、限制说明 |
 | `report.md` | 人工评审用 Markdown 报告 |
 | `report.html` | 完全自包含、无脚本、无外部资源的 HTML 报告 |
-| `audit.sqlite` | 运行、图层、findings、输入文件、规则目录快照台账 |
+| `audit.sqlite` | 运行、图层、findings、输入文件、规则目录快照台账；声明 `network_audit` 时另含 `network_audit_runs` 与 `network_audit_reachability` 线网表 |
 | `inputs.json` | 本次运行的 config/input/result 摘要与文件级 SHA-256 |
 | `summary.txt` | 终端摘要的文本副本 |
 
 台账以 `result_digest` 为运行主键。相同报告重复写入不会产生重复的 run、layer 或 finding；不同摘要会成为新运行。报告中的 `result_digest` 在写台账前会被重新计算，不一致时拒绝写入。
+
+### 3.1 线网可达性审计
+
+在图层配置中声明 `network_audit` 即启用配置驱动的通行网络审计（不声明的图层保持旧行为）。构图只承认真实几何接触——端点重合、T 接、内部交叉、共线重叠；仅包围盒相交或 `coordinate_epsilon` 之外的接近永远不连通。
+
+```json
+"network_audit": {
+  "entry_feature_ids": ["RD-WEST"],
+  "grade_field": "grade"
+}
+```
+
+- 声明 `grade_field` 时：同层内部交叉默认可通行；跨层交叉按桥/隧分离不换线（`NETWORK_GRADE_SEPARATED`）；层级缺失给出不可判定原因且不臆测连通（`NETWORK_GRADE_UNDUCIDABLE`）。
+- 无层级的平面图纸改用 `crossing_policy`：`planar_junction` 把真实内部交叉接为通路；`grade_unknown` 保留两线各自连续、不在交叉处换线并标注待现场核实（`NETWORK_UNKNOWN_CROSSING`）。同一十字线网中，前者从西端可到北端，后者不可。
+- 含非有限坐标、点数不足、零长度段或自交的部件被排除在网络外（`NETWORK_INVALID_SEGMENT`），坏几何不可能虚连原本不通的两侧。
+- 报告的 `network_audit` 段给出连通分量、入口可达/不可达末端、断裂位置、阻断接点和可复核的原始线段索引；SQLite 的 `network_audit_runs`、`network_audit_reachability` 表与报告逐行核对。
+- 合成样例位于 `fixtures/network/`：十字平面交叉、跨层桥梁、T 接、近而不交、无效段、环与多入口、缺层级。
 
 一条 finding 的形态（摘自演示报告）：
 
@@ -98,7 +115,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 }
 ```
 
-报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 19 条规则及计数；`findings` 是已排序明细；`limitations` 固定记录能力边界。
+报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 25 条规则及计数；配置了 `network_audit` 的图层还会在 `network_audit` 段给出通行网络、入口可达末端与可复核线段证据；`findings` 是已排序明细；`limitations` 固定记录能力边界。
 
 ## 4. 配置和输入
 
@@ -145,7 +162,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 ## 5. 规则与严重级别
 
-19 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
+25 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
 
 | 级别 | 含义 |
 | --- | --- |

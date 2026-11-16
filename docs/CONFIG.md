@@ -78,6 +78,7 @@
 | `rules` | 否 | 规则开关对象；省略时全部启用 |
 | `thresholds` | 否 | 本图层容差覆盖 |
 | `declared_crs` | 否 | 图层声明的 CRS，只含 `name` 和 `type` |
+| `network_audit` | 否 | 线网可达性审计配置；省略时该图层不构图、行为与旧版本完全一致 |
 
 ### 4.1 路径解析
 
@@ -143,6 +144,34 @@ MultiPolygon
 ```
 
 该对象只允许 `name` 和 `type`。当 `name` 或 `type` 与全局 `crs` 不完全一致时，产生图层级 `LAYER_CRS_MISMATCH`。该规则不执行坐标变换。
+
+### 4.6 线网可达性 `network_audit`
+
+该配置只影响声明它的图层，只允许三个键：
+
+| 字段 | 必填 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `entry_feature_ids` | 是 | 非空、无重复的字符串数组 | 同图层入口要素的 ID（取 `id_field` 值）；缺失 ID 产生 `NETWORK_ENTRY_NOT_FOUND` |
+| `grade_field` | 二选一 | 非空字符串 | 通行层级属性字段名；按层级规则判定接点 |
+| `crossing_policy` | 二选一 | `planar_junction` 或 `grade_unknown` | 无层级平面图纸的内部交叉解释路线 |
+
+`grade_field` 与 `crossing_policy` 互斥且必须恰好声明其一，否则 `TOPO-CFG-006`。层级模式下，属性缺失、为 null、空白、布尔、对象或数组都视为“层级未知”，接点判定为不可通行并产生 `NETWORK_GRADE_UNDUCIDABLE`，不会被臆测为连通。
+
+```json
+"network_audit": {
+  "entry_feature_ids": ["RD-WEST", "RD-NORTH-GATE"],
+  "grade_field": "grade"
+}
+```
+
+```json
+"network_audit": {
+  "entry_feature_ids": ["RD-WEST"],
+  "crossing_policy": "planar_junction"
+}
+```
+
+构图只承认真实几何接触（端点重合、T 接、内部交叉、共线重叠），`coordinate_epsilon` 之外的接近和仅包围盒相交不连通。含非有限坐标、点数不足、零长度段或自交的部件被排除在网络外（`NETWORK_INVALID_SEGMENT`），避免坏几何虚连。
 
 ## 5. GeoJSON 输入
 

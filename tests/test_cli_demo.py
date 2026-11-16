@@ -34,7 +34,14 @@ class CliDemoTest(unittest.TestCase):
             self.assertEqual(report["summary"]["total_findings"], 24)
             self.assertEqual(report["summary"]["total_features"], 33)
             self.assertEqual(len(report["findings"]), 24)
-            self.assertEqual({item["rule_id"] for item in report["findings"]}, set(report["rules"][i]["rule_id"] for i in range(19)))
+            self.assertEqual({item["rule_id"] for item in report["findings"]}, set(report["rules"][i]["rule_id"] for i in range(25)) - {
+                "NETWORK_ENTRY_NOT_FOUND",
+                "NETWORK_INVALID_SEGMENT",
+                "NETWORK_GRADE_UNDUCIDABLE",
+                "NETWORK_GRADE_SEPARATED",
+                "NETWORK_UNKNOWN_CROSSING",
+                "NETWORK_UNREACHABLE_TERMINAL",
+            })
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["verify", "--report", str(out / "report.json"), "--ledger", str(out / "audit.sqlite")]), 0)
             with contextlib.redirect_stdout(io.StringIO()):

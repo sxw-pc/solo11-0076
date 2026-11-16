@@ -66,6 +66,7 @@ def render_html(report: dict[str, Any]) -> str:
     ]
     parts.extend(_layers_html(report.get("layers", [])))
     parts.extend(_rules_html(report.get("rules", [])))
+    parts.extend(_network_audit_html(report.get("network_audit", [])))
     parts.extend(_findings_html(report.get("findings", [])))
     parts.extend(_inputs_html(report.get("input_files", [])))
     parts.append("<h2>限制说明</h2><ul>")
@@ -120,6 +121,87 @@ def _rules_html(rules: list[dict[str, Any]]) -> list[str]:
             )
         )
     lines.append("</tbody></table>")
+    return lines
+
+def _network_audit_html(networks: list[dict[str, Any]]) -> list[str]:
+    lines = [f"<h2>线网可达性审计（{len(networks)}）</h2>"]
+    if not networks:
+        return lines + ["<p>未配置线网可达性审计的图层。</p>"]
+    for network in networks:
+        mode = (
+            f"grade_field={network.get('grade_field')}"
+            if network.get("grade_field")
+            else f"crossing_policy={network.get('crossing_policy')}"
+        )
+        lines.append('<div class="card" style="margin:.75rem 0">')
+        lines.append(
+            "<h3>图层 {}</h3>".format(_e(network.get("layer_id", "")))
+        )
+        lines.append(
+            "<p class=\"muted\">入口: {} ；解释模式: {}</p>".format(
+                _e(", ".join(network.get("entry_feature_ids", []))),
+                _e(mode),
+            )
+        )
+        lines.append(
+            "<p>节点 {} ｜ 边 {} ｜ 连通分量 {} ｜ 有效部件 {} ｜ 无效部件 {}</p>".format(
+                network.get("node_count", 0),
+                network.get("edge_count", 0),
+                len(network.get("connected_components", [])),
+                network.get("valid_part_count", 0),
+                network.get("invalid_part_count", 0),
+            )
+        )
+        lines.append("<table><thead><tr><th>入口</th><th>可达末端</th><th>不可达末端</th></tr></thead><tbody>")
+        for entry in network.get("entry_reachability", []):
+            lines.append(
+                "<tr><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                    _e(entry.get("entry_feature_id", "")),
+                    _e(", ".join(entry.get("reachable_terminal_ids", [])) or "—"),
+                    _e(", ".join(entry.get("unreachable_terminal_ids", [])) or "—"),
+                )
+            )
+        lines.append("</tbody></table>")
+        blocked = network.get("blocked_contacts", [])
+        if blocked:
+            lines.append(f"<h4>阻断/待核实接点（{len(blocked)}）</h4>")
+            lines.append("<table><thead><tr><th>类型</th><th>坐标</th><th>要素 A</th><th>要素 B</th><th>判定</th><th>原因</th></tr></thead><tbody>")
+            for contact in blocked:
+                lines.append(
+                    "<tr><td>{}</td><td class=\"mono\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                        _e(contact.get("contact_type", "")),
+                        _e(canonical_json(contact.get("coordinate", []))),
+                        _e(contact.get("feature_a", "")),
+                        _e(contact.get("feature_b", "")),
+                        _e(contact.get("decision", "")),
+                        _e(contact.get("reason", "")),
+                    )
+                )
+            lines.append("</tbody></table>")
+        unreachable = network.get("unreachable_terminals", [])
+        if unreachable:
+            lines.append(f"<h4>不可达末端证据（{len(unreachable)}）</h4>")
+            lines.append("<table><thead><tr><th>末端</th><th>坐标</th><th>最近可达节点</th><th>距离</th><th>分量</th><th>原始线段证据</th></tr></thead><tbody>")
+            for terminal in unreachable:
+                evidence = canonical_json(
+                    {
+                        "blocked_contacts": terminal.get("blocked_contacts", []),
+                        "segment_evidence": terminal.get("segment_evidence", []),
+                    }
+                )
+                lines.append(
+                    "<tr><td>{}</td><td class=\"mono\">{}</td><td>{}</td><td>{}</td><td>{}</td>"
+                    "<td><details><summary>展开证据</summary><pre>{}</pre></details></td></tr>".format(
+                        _e(terminal.get("terminal_id", "")),
+                        _e(canonical_json(terminal.get("coordinate", []))),
+                        _e(terminal.get("nearest_reachable_node") or "—"),
+                        _e(terminal.get("distance_to_network")),
+                        _e(terminal.get("component_id") or "—"),
+                        _e(evidence),
+                    )
+                )
+            lines.append("</tbody></table>")
+        lines.append("</div>")
     return lines
 
 def _findings_html(findings: list[dict[str, Any]]) -> list[str]:

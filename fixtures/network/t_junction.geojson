@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"line_id": "TJ-TRUNK"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0, 10], [10, 10], [20, 10], [30, 10]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"line_id": "TJ-BRANCH"},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[10, 10], [10, 30]]
+      }
+    }
+  ]
+}
