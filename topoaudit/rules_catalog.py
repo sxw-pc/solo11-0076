@@ -37,6 +37,7 @@ _RULE_ROWS = (
     ("NEAR_MISS_ENDPOINT", "info", "端点近接", "不同线的端点距离超过坐标容差但不超过近接容差。", "endpoint_a,endpoint_b,distance,tolerance"),
     ("LAYER_CRS_MISMATCH", "error", "图层 CRS 声明不一致", "图层 declared_crs 与全局 crs 名称或类型不一致。", "expected_crs,declared_crs"),
     ("EMPTY_LAYER", "warning", "空图层", "图层加载后不包含任何要素。", "feature_count"),
+    ("LINE_COVERAGE", "error", "线未被面连续覆盖", "配置声明的线图层未被指定面图层按并集连续覆盖；按全线逐段核验，面环无效时不给已覆盖结论。", "status,total_length,covered_length,uncovered_length,undetermined_length,lengths,uncovered_slices,boundary_mode,tolerance"),
 )
 RULE_CATALOG: dict[str, RuleMeta] = {
     row[0]: RuleMeta(row[0], row[1], row[2], row[3], tuple(row[4].split(",")))

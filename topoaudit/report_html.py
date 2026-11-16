@@ -65,6 +65,7 @@ def render_html(report: dict[str, Any]) -> str:
         "</div>",
     ]
     parts.extend(_layers_html(report.get("layers", [])))
+    parts.extend(_coverage_html(report.get("coverage", [])))
     parts.extend(_rules_html(report.get("rules", [])))
     parts.extend(_findings_html(report.get("findings", [])))
     parts.extend(_inputs_html(report.get("input_files", [])))
@@ -103,6 +104,57 @@ def _layers_html(layers: list[dict[str, Any]]) -> list[str]:
             )
         )
     lines.append("</tbody></table>")
+    return lines
+
+def _coverage_html(sections: list[dict[str, Any]]) -> list[str]:
+    if not sections:
+        return []
+    lines = ["<h2>线覆盖审计</h2>"]
+    for section in sections:
+        counts = section.get("status_counts", {})
+        lines.append(
+            "<h3>规则 <code>{}</code>：{} → {}</h3>".format(
+                _e(section.get("rule_id", "")),
+                _e(section.get("line_layer", "")),
+                _e(section.get("polygon_layer", "")),
+            )
+        )
+        lines.append(
+            '<p class="muted">boundary_mode={} · tolerance={} · 启用={}</p>'.format(
+                _e(section.get("boundary_mode", "")),
+                _e(section.get("tolerance", 0)),
+                "是" if section.get("enabled", True) else "否",
+            )
+        )
+        lines.append("<table><thead><tr><th>状态</th><th>数量</th></tr></thead><tbody>")
+        for status in ("covered", "partial", "uncovered", "undetermined", "empty"):
+            lines.append(
+                "<tr><td>{}</td><td>{}</td></tr>".format(
+                    _e(status), _e(counts.get(status, 0))
+                )
+            )
+        lines.append("</tbody></table>")
+        lines.append(
+            "<table><thead><tr><th>线要素</th><th>状态</th><th>总长</th>"
+            "<th>已覆盖</th><th>未覆盖</th><th>不可判定</th><th>未覆盖区段证据</th>"
+            "</tr></thead><tbody>"
+        )
+        for record in section.get("lines", []):
+            lines.append(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>"
+                "<td>{}</td><td><details><summary>{} 段</summary><pre>{}</pre>"
+                "</details></td></tr>".format(
+                    _e(record.get("feature_id", "")),
+                    _e(record.get("status", "")),
+                    _e(record.get("total_length", 0)),
+                    _e(record.get("covered_length", 0)),
+                    _e(record.get("uncovered_length", 0)),
+                    _e(record.get("undetermined_length", 0)),
+                    _e(len(record.get("uncovered_slices", []))),
+                    _e(canonical_json(record.get("uncovered_slices", []))),
+                )
+            )
+        lines.append("</tbody></table>")
     return lines
 
 def _rules_html(rules: list[dict[str, Any]]) -> list[str]:

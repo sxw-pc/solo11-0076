@@ -27,6 +27,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         lines.append(f"| {severity} | {severity_counts.get(severity, 0)} |")
     lines.append("")
     lines.extend(_render_layers(report.get("layers", [])))
+    lines.extend(_render_coverage(report.get("coverage", [])))
     lines.extend(_render_rules(report.get("rules", [])))
     lines.extend(_render_findings(report.get("findings", [])))
     lines.extend(_render_inputs(report.get("input_files", [])))
@@ -66,6 +67,84 @@ def _render_layers(layers: list[dict[str, Any]]) -> list[str]:
             )
         )
     lines.append("")
+    return lines
+
+def _render_coverage(sections: list[dict[str, Any]]) -> list[str]:
+    if not sections:
+        return []
+    lines = ["## 线覆盖审计", ""]
+    for section in sections:
+        lines.append(
+            "### 规则 `{rule}`：`{line}` → `{poly}`".format(
+                rule=_cell(section.get("rule_id", "")),
+                line=_cell(section.get("line_layer", "")),
+                poly=_cell(section.get("polygon_layer", "")),
+            )
+        )
+        lines.append("")
+        lines.append(
+            "| 边界口径 | 容差 | 启用 | 已覆盖 | 部分 | 未覆盖 | 不可判定 | 空线 |"
+        )
+        lines.append("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |")
+        counts = section.get("status_counts", {})
+        lines.append(
+            "| {mode} | {tol} | {enabled} | {covered} | {partial} | {uncovered} | "
+            "{undetermined} | {empty} |".format(
+                mode=_cell(section.get("boundary_mode", "")),
+                tol=section.get("tolerance", 0),
+                enabled="是" if section.get("enabled", True) else "否",
+                covered=counts.get("covered", 0),
+                partial=counts.get("partial", 0),
+                uncovered=counts.get("uncovered", 0),
+                undetermined=counts.get("undetermined", 0),
+                empty=counts.get("empty", 0),
+            )
+        )
+        lines.append("")
+        lines.append(
+            "| 线要素 | 状态 | 总长 | 已覆盖 | 未覆盖 | 不可判定 | 未覆盖区段 |"
+        )
+        lines.append("| --- | --- | ---: | ---: | ---: | ---: | --- |")
+        for record in section.get("lines", []):
+            slices = record.get("uncovered_slices", [])
+            preview = "; ".join(
+                "{part} seg{seg} {kind} {length} [{start}→{end}]".format(
+                    part=item.get("part", ""),
+                    seg=item.get("segment", ""),
+                    kind=item.get("kind", ""),
+                    length=item.get("length", 0),
+                    start=item.get("start"),
+                    end=item.get("end"),
+                )
+                for item in slices[:5]
+            ) or "—"
+            lines.append(
+                "| {feature} | {status} | {total} | {covered} | {uncovered} | "
+                "{undetermined} | {slices} |".format(
+                    feature=_cell(record.get("feature_id", "")),
+                    status=_cell(record.get("status", "")),
+                    total=record.get("total_length", 0),
+                    covered=record.get("covered_length", 0),
+                    uncovered=record.get("uncovered_length", 0),
+                    undetermined=record.get("undetermined_length", 0),
+                    slices=_cell(preview),
+                )
+            )
+        invalid = section.get("invalid_polygon_sources", [])
+        if invalid:
+            lines.append("")
+            lines.append(
+                "不可判定面来源："
+                + "; ".join(
+                    "{feature} {component} {reasons}".format(
+                        feature=_cell(item.get("feature_id", "")),
+                        component=_cell(item.get("component", "")),
+                        reasons=_cell(", ".join(item.get("reasons", []))),
+                    )
+                    for item in invalid
+                )
+            )
+        lines.append("")
     return lines
 
 def _render_rules(rules: list[dict[str, Any]]) -> list[str]:

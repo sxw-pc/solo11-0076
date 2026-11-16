@@ -63,3 +63,48 @@ def compare_with_expected(report: dict[str, Any], expected: dict[str, Any]) -> N
                 f"演示结果与 expected_summary.{key} 不一致",
                 str(EXPECTED_SUMMARY),
             )
+    expected_coverage = expected.get("coverage_expect")
+    if expected_coverage:
+        _compare_coverage(report, expected_coverage)
+
+def _compare_coverage(report: dict[str, Any], expected: dict[str, Any]) -> None:
+    sections = {
+        str(section.get("rule_id")): section
+        for section in report.get("coverage", [])
+    }
+    for rule_id, wanted in expected.items():
+        section = sections.get(rule_id)
+        if section is None:
+            raise ReportError(
+                "TOPO-DEMO-004",
+                f"演示报告缺少 coverage 规则: {rule_id}",
+                str(EXPECTED_SUMMARY),
+            )
+        if "boundary_mode" in wanted and section.get("boundary_mode") != wanted["boundary_mode"]:
+            raise ReportError(
+                "TOPO-DEMO-004",
+                f"coverage 规则 {rule_id} 的 boundary_mode 不一致",
+                str(EXPECTED_SUMMARY),
+            )
+        if "status_counts" in wanted and section.get("status_counts") != wanted["status_counts"]:
+            raise ReportError(
+                "TOPO-DEMO-004",
+                f"coverage 规则 {rule_id} 的 status_counts 不一致",
+                str(EXPECTED_SUMMARY),
+            )
+        lines = {str(item.get("feature_id")): item for item in section.get("lines", [])}
+        for feature_id, fields in wanted.get("lines", {}).items():
+            record = lines.get(feature_id)
+            if record is None:
+                raise ReportError(
+                    "TOPO-DEMO-004",
+                    f"coverage 规则 {rule_id} 缺少线要素 {feature_id}",
+                    str(EXPECTED_SUMMARY),
+                )
+            for field, value in fields.items():
+                if record.get(field) != value:
+                    raise ReportError(
+                        "TOPO-DEMO-004",
+                        f"coverage 线 {feature_id}.{field} 与预期不一致",
+                        str(EXPECTED_SUMMARY),
+                    )

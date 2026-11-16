@@ -12,7 +12,7 @@ from .model import (
     geometry_type_counts,
 )
 from .normalize import finite_bbox
-from .rules import run_rules
+from .rules import run_rules_with_coverage
 from .util import stable_round
 LIMITATIONS = (
     "仅处理二维欧氏几何；不进行坐标参考系转换或投影计算。",
@@ -21,11 +21,12 @@ LIMITATIONS = (
     "工具只读输入文件，不自动修复、合并或写回源数据。",
     "仅支持本地 GeoJSON 与 CSV，不连接远程服务或数据库。",
     "环、线和压盖算法面向小团队离线卡点，不面向超大规模数据集。",
+    "线覆盖审计按面环并集逐段判定；面环无效或图层 CRS 冲突时相关线段记为不可判定，不给已覆盖结论。",
 )
 
 def run_audit(config: AuditConfig) -> AuditResult:
     layers = load_layers(config)
-    findings = run_rules(config, layers)
+    findings, coverage = run_rules_with_coverage(config, layers)
     input_files = tuple(layer.input_file for layer in sorted(layers, key=lambda item: item.config.layer_id))
     input_digest = compute_input_digest(config.config_digest, input_files)
     stats = _build_layer_stats(layers, findings)
@@ -39,6 +40,7 @@ def run_audit(config: AuditConfig) -> AuditResult:
         input_digest=input_digest,
         summary=summary,
         limitations=LIMITATIONS,
+        coverage=coverage,
     )
 def _build_layer_stats(
     layers: tuple[LoadedLayer, ...], findings: tuple[Finding, ...]

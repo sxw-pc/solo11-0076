@@ -41,7 +41,7 @@ class LoaderTest(unittest.TestCase):
     def test_fixture_layers_and_file_digests(self):
         config = load_config(DEMO / "config.json")
         layers = load_layers(config)
-        self.assertEqual([item.config.layer_id for item in layers], ["parcels", "roads", "points", "empty"])
+        self.assertEqual([item.config.layer_id for item in layers], ["parcels", "roads", "points", "empty", "zones", "routes"])
         self.assertEqual(len(layers[0].features), 12)
         self.assertEqual(len(layers[1].features), 14)
         self.assertEqual(layers[2].features[0].properties["elevation"], 12.5)

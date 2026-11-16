@@ -1,6 +1,6 @@
 # 矢量拓扑验台（topoaudit）
 
-一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 19 条规则，输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
+一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 20 条规则，输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
 
 - 项目 slug：`topoaudit`
 - Python：3.10+
@@ -58,11 +58,11 @@ python -m unittest discover -s tests -v
 演示会核对 `fixtures/demo/expected_summary.json`，并确保演示输出不写入 fixture 目录。当前 fixture 的参考值：
 
 ```text
-layers / features : 4 / 33
-findings          : 24（error=15, warning=8, info=1）
-覆盖规则           : 19 / 19
-input_digest      : e3ea9103ea9b01639897200ce167a64d17822b1ac6c796733cd5e49524246b25
-result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f8e73
+layers / features : 6 / 44
+findings          : 29（error=20, warning=8, info=1）
+覆盖规则           : 20 / 20
+input_digest      : 235f85b6b9ad781abf7e32179f6424d3adb9de49f7061ff77992a6161e8959ab
+result_digest     : 7b71f957bebaa1ccecdec8353f5bf89e8ccf41315eaa3a0d9237efb17b1b3eb3
 ```
 
 `result_digest` 是 fixture、配置和规则实现的联合指纹。修改任何一项后，应以新生成的报告和 `verify` 结果为准。
@@ -98,7 +98,32 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 }
 ```
 
-报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 19 条规则及计数；`findings` 是已排序明细；`limitations` 固定记录能力边界。
+报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 20 条规则及计数；`findings` 是已排序明细；`limitations` 固定记录能力边界。
+
+## 3.1 线覆盖审计
+
+除逐图层规则外，配置可以声明“线图层被面图层连续覆盖”的验收口径：
+
+```json
+"coverage_rules": [
+  {
+    "id": "routes-in-permit-zones",
+    "line_layer": "routes",
+    "polygon_layer": "zones",
+    "boundary_mode": "boundary_allowed",
+    "tolerance": 0.5
+  }
+]
+```
+
+它逐段核验整条线（而非只看端点），面按外环减洞求并集，因此跨相接面可以连续覆盖、重叠面不会重复计算长度。`boundary_mode` 必须显式声明：
+
+- `strict_interior`：只接受严格位于面内部的长度；
+- `boundary_allowed`：也接受真实落在外环或洞边的长度。
+
+同一条沿边线在前者不合格、后者合格；`boundary_mode` 会改变 finding 与 `result_digest`。落在外侧但距边界不超过容差的线段单独记为 `tolerance_exterior`，两种口径下都不合格，容差不会把真实未覆盖长度抹掉。面环无效或面图层 CRS 冲突时，受影响线段记为 `undetermined`，不给“已覆盖”结论，其他独立区域仍正常审计。
+
+每条线的状态、各分类长度、未覆盖区段及其原始起止坐标写入 JSON 报告的 `coverage` 段、`LINE_COVERAGE` finding 证据，以及 SQLite 的 `coverage_lines` / `coverage_rules` 表，三处可直接交叉核对。
 
 ## 4. 配置和输入
 
@@ -145,7 +170,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 ## 5. 规则与严重级别
 
-19 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
+20 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
 
 | 级别 | 含义 |
 | --- | --- |
@@ -229,13 +254,20 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── model.py           # 冻结数据模型
 │   ├── loaders.py         # GeoJSON / CSV 只读加载
 │   ├── geometry_core.py   # 几何谓词
-│   ├── geometry.py        # 面积、环、包含、压盖视图
+│   ├── geometry.py        # 面积、环、包含、压盖视图（再导出覆盖原语）
+│   ├── geometry_coverage.py # 环有效性、并集点定位
+│   ├── geometry_segments.py # 线段切分与距离原语
 │   ├── normalize.py       # 规范几何签名
-│   ├── rules_catalog.py   # 19 条规则目录和固定级别
+│   ├── rules_catalog.py   # 20 条规则目录和固定级别
 │   ├── findings.py        # finding 构造、去重、排序
 │   ├── rule_schema.py     # 属性规则
 │   ├── rule_geometry.py   # 坐标与几何规则
 │   ├── rule_topology.py   # 身份、压盖、端点规则
+│   ├── rule_coverage.py   # 线→面覆盖审计编排
+│   ├── coverage_sources.py # 面源有效性与 CRS 判定
+│   ├── coverage_segments.py # 逐段切分与区段分类
+│   ├── coverage_slices.py # 区段类别与状态工具
+│   ├── coverage_summary.py # 长度汇总与状态决定
 │   ├── rules.py           # 规则编排
 │   ├── engine.py          # 端到端审计结果
 │   ├── report_json.py     # 确定性 JSON 与 result_digest
@@ -248,7 +280,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── demo.py            # 合成演示与预期计数核对
 │   ├── server.py          # 回环只读 HTTP 服务
 │   └── server_pages.py    # 自包含复核页面
-└── tests/                 # 7 个 unittest 文件
+└── tests/                 # 8 个 unittest 文件
 ```
 
 `fixtures/demo` 全部为虚构合成数据，不包含真实公司、域名、地址、凭据或个人数据。
@@ -259,7 +291,8 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 - 几何谓词、包含关系（含孔洞）、压盖和规范化。
 - GeoJSON/CSV 加载、文件摘要、非法输入、严格配置错误。
-- 19 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
+- 20 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
+- 线覆盖审计：全线逐段判定、洞与并集、边界口径差异、无效面/CRS 不可判定、报告与台账证据一致。
 - JSON/Markdown/HTML 报告的确定性、自包含与转义。
 - SQLite 表结构、幂等写入、过滤查询、报告/台账篡改检测。
 - 本机 HTTP 服务的健康检查、页面、JSON 过滤、路径穿越/未知路由拒绝、方法限制和回环绑定。
@@ -269,12 +302,12 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 python -m unittest discover -s tests -v
 ```
 
-工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行，生产代码与测试合计在 2500–4500 行之间。
+工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行。
 
 ## 11. 已知限制
 
 - 仅支持二维欧氏几何；`crs.type=geographic` 只做经纬度边界校验，不做投影或距离换算。
-- 拓扑检查以单图层为边界，不建立跨图层的节点—边—面拓扑，也不做全局连通性、缝隙面积或压盖面积计算。
+- 拓扑检查以单图层为边界，不建立跨图层的节点—边—面拓扑，也不做全局连通性、缝隙面积或压盖面积计算；唯一的跨图层检查是配置显式声明的 `coverage_rules`（线图层被面图层连续覆盖）。
 - 端点规则只比较线要素端点，不把多边形边界、线内部顶点或另一图层的端点视为连接。
 - 压盖检测先用 bbox 预筛，再做确定性布尔拓扑判断；只报告内部重叠，共边或共点不算压盖。
 - 自相交和近接判定依赖配置容差；改变容差可能改变 findings 和摘要。
@@ -285,6 +318,6 @@ python -m unittest discover -s tests -v
 ## 12. 文档索引
 
 - [`docs/CONFIG.md`](docs/CONFIG.md)：配置 schema、默认值、输入格式、错误码。
-- [`docs/RULES.md`](docs/RULES.md)：19 条规则的语义、证据、示例覆盖和限制。
+- [`docs/RULES.md`](docs/RULES.md)：20 条规则的语义、证据、示例覆盖和限制。
 - [`docs/DETERMINISM.md`](docs/DETERMINISM.md)：摘要链、排序、幂等和复现方法。
 - [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)：离线、只读、数据边界和安全合规说明。

@@ -24,8 +24,8 @@ class ReportTest(unittest.TestCase):
             "summary", "layers", "rules", "findings", "input_files", "limitations",
         ):
             self.assertIn(key, self.report)
-        self.assertEqual(len(self.report["rules"]), 19)
-        self.assertEqual(len(self.report["findings"]), 24)
+        self.assertEqual(len(self.report["rules"]), 20)
+        self.assertEqual(len(self.report["findings"]), 29)
         self.assertEqual(len(self.report["result_digest"]), 64)
         self.assertEqual(compute_result_digest(self.report), self.report["result_digest"])
         changed = dict(self.report)
@@ -45,7 +45,7 @@ class ReportTest(unittest.TestCase):
             self.assertEqual(written["result_digest"], report["result_digest"])
             inputs = json.loads(paths["inputs"].read_text(encoding="utf-8"))
             self.assertEqual(inputs["input_digest"], report["input_digest"])
-            self.assertEqual(len(inputs["input_files"]), 4)
+            self.assertEqual(len(inputs["input_files"]), 6)
             markdown = paths["markdown"].read_text(encoding="utf-8")
             self.assertIn("POLYGON_OVERLAP", markdown)
             self.assertIn(report["result_digest"], markdown)

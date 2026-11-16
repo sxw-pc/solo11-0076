@@ -166,6 +166,8 @@ def _parse_declared_crs(raw: Any, path: str) -> DeclaredCRS | None:
     if kind not in ("planar", "geographic"):
         raise ConfigError("TOPO-CFG-006", "declared_crs.type 必须是 planar 或 geographic", f"{path}.type")
     return DeclaredCRS(name=name, kind=kind)
+
+
 def _object(raw: Any, path: str, allowed: set[str]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ConfigError("TOPO-CFG-004", "此处必须是 JSON 对象", path)

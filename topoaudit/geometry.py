@@ -1,5 +1,12 @@
-"""Polygon geometry, overlap predicates, and geometry component views."""
+"""Polygon geometry, overlap predicates, and geometry component views.
+
+This module also hosts the deterministic primitives used by the
+line-coverage audit: polygon validity reasons, point-location against a
+union of polygons, and a segment splitter that turns a polyline into
+homogeneous inside/boundary/outside slices.
+"""
 from __future__ import annotations
+import math
 from typing import Any, Iterable, Optional, Sequence
 from .geometry_core import (
     Point,
@@ -19,6 +26,22 @@ from .geometry_core import (
     segments_intersect,
     zero_length_segments,
 )
+from .geometry_coverage import (
+    POLYGON_ISSUE_ORDER,
+    POLYGON_ISSUE_RANK,
+    point_in_polygon,
+    point_location,
+    polygon_validity,
+    ring_signed_area,
+    union_point_location,
+)
+from .geometry_segments import (
+    closest_point_on_segment,
+    interpolate,
+    segment_bbox_interval,
+    segment_distance,
+    split_segment,
+)
 Ring = tuple[Point, ...]
 Polygon = tuple[Ring, ...]
 
@@ -31,48 +54,6 @@ def valid_polygon(polygon: Sequence[Sequence[Point]], epsilon: float) -> bool:
         and all(valid_ring(ring, epsilon) for ring in polygon)
         and abs(ring_signed_area(polygon[0])) > epsilon * epsilon
     )
-
-def point_location(ring: Sequence[Point], point: Point, epsilon: float = 0.0) -> str:
-    """Classify a point against a ring as inside, boundary, or outside."""
-    if len(ring) < 2:
-        return "outside"
-    inside = False
-    count = len(ring)
-    for index in range(count):
-        a = ring[index]
-        b = ring[(index + 1) % count]
-        if point_on_segment(point, a, b, epsilon):
-            return "boundary"
-        if (a[1] > point[1]) != (b[1] > point[1]):
-            x_at_y = (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0]
-            if x_at_y > point[0]:
-                inside = not inside
-    return "inside" if inside else "outside"
-
-def point_in_polygon(polygon: Sequence[Sequence[Point]], point: Point, epsilon: float = 0.0) -> str:
-    """Location of a point in a polygon with optional holes."""
-    if not polygon:
-        return "outside"
-    outer = point_location(polygon[0], point, epsilon)
-    if outer != "inside":
-        return outer
-    for hole in polygon[1:]:
-        location = point_location(hole, point, epsilon)
-        if location == "inside":
-            return "outside"
-        if location == "boundary":
-            return "boundary"
-    return "inside"
-
-def ring_signed_area(ring: Sequence[Point]) -> float:
-    if len(ring) < 3:
-        return 0.0
-    total = 0.0
-    for index in range(len(ring)):
-        x1, y1 = ring[index]
-        x2, y2 = ring[(index + 1) % len(ring)]
-        total += float(x1) * float(y2) - float(x2) * float(y1)
-    return total / 2.0
 
 def ring_perimeter(ring: Sequence[Point]) -> float:
     if len(ring) < 2:

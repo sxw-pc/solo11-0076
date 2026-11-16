@@ -21,6 +21,10 @@ SUPPORTED_SCHEMA_TYPES = (
 )
 SEVERITIES = ("error", "warning", "info")
 SEVERITY_RANK = {"error": 0, "warning": 1, "info": 2}
+LINE_GEOMETRY_TYPES = ("LineString", "MultiLineString")
+POLYGON_GEOMETRY_TYPES = ("Polygon", "MultiPolygon")
+COVERAGE_BOUNDARY_MODES = ("strict_interior", "boundary_allowed")
+COVERAGE_STATUSES = ("covered", "partial", "uncovered", "undetermined", "empty")
 @dataclass(frozen=True)
 class Bounds:
     min_x: float
@@ -50,6 +54,36 @@ class DeclaredCRS:
     kind: str
     def as_dict(self) -> dict[str, str]:
         return {"name": self.name, "type": self.kind}
+
+@dataclass(frozen=True)
+class CoverageRuleConfig:
+    """A declared line-layer -> polygon-layer coverage rule.
+
+    ``boundary_mode`` is the business interpretation of line length that
+    falls exactly on a polygon boundary ring:
+
+    - ``strict_interior``: only length strictly inside the polygon area
+      counts as covered; boundary length is reported but not accepted;
+    - ``boundary_allowed``: length that genuinely lies on an outer or hole
+      ring also counts as covered.  Tolerance-near-but-outside length is
+      still not accepted.
+    """
+
+    rule_id: str
+    line_layer_id: str
+    polygon_layer_id: str
+    boundary_mode: str
+    tolerance: float
+    enabled: bool = True
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.rule_id,
+            "line_layer": self.line_layer_id,
+            "polygon_layer": self.polygon_layer_id,
+            "boundary_mode": self.boundary_mode,
+            "tolerance": self.tolerance,
+            "enabled": self.enabled,
+        }
 @dataclass(frozen=True)
 class Tolerance:
     coordinate_epsilon: float = 1e-9
@@ -112,14 +146,20 @@ class AuditConfig:
     tolerance: Tolerance
     crs: CRS
     layers: tuple[LayerConfig, ...]
+    coverage_rules: tuple[CoverageRuleConfig, ...] = ()
     def as_public_dict(self) -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "schema_version": self.schema_version,
             "run_label": self.run_label,
             "tolerance": self.tolerance.as_dict(),
             "crs": self.crs.as_dict(),
             "layers": [layer.as_dict() for layer in self.layers],
         }
+        if self.coverage_rules:
+            result["coverage_rules"] = [
+                rule.as_dict() for rule in self.coverage_rules
+            ]
+        return result
 @dataclass(frozen=True)
 class Geometry:
     kind: str
@@ -206,6 +246,7 @@ class AuditResult:
     input_digest: str
     summary: dict[str, Any]
     limitations: tuple[str, ...]
+    coverage: tuple[dict[str, Any], ...] = ()
 
 def geometry_type_counts(features: tuple[Feature, ...]) -> dict[str, int]:
     counts: dict[str, int] = {}

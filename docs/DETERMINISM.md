@@ -190,6 +190,8 @@ severity_rank, rule_id, layer_id, COALESCE(feature_id, ''), finding_id
 - `(result_digest, layer_id)` 作为图层主键；
 - `(result_digest, finding_id)` 作为 finding 主键；
 - `(result_digest, layer_id)` 作为输入文件主键；
+- `(result_digest, rule_id)` 作为覆盖规则主键；
+- `(result_digest, rule_id, layer_id, feature_id)` 作为覆盖线记录主键；
 - 规则目录以 `rule_id` 为主键的全局快照。
 
 写入流程：
@@ -198,7 +200,7 @@ severity_rank, rule_id, layer_id, COALESCE(feature_id, ''), finding_id
 2. 重新计算报告摘要；
 3. 如果缺失或不一致，抛 `TOPO-LED-003`，不打开写入；
 4. 建立 schema（`CREATE TABLE IF NOT EXISTS`）；
-5. 在事务内用 `INSERT OR IGNORE` 写入 run、layers、findings、input_files；
+5. 在事务内用 `INSERT OR IGNORE` 写入 run、layers、findings、input_files、coverage_rules、coverage_lines；
 6. 规则目录用 `ON CONFLICT(rule_id) DO UPDATE` 刷新快照；
 7. 提交。
 
@@ -222,6 +224,7 @@ severity_rank, rule_id, layer_id, COALESCE(feature_id, ''), finding_id
 7. 比较 finding 集合、finding ID、规则、级别、图层、要素、关联要素和证据；
 8. 比较输入文件集合与每项路径/格式/SHA-256/大小；
 9. 比较规则目录的 `rule_id`、`severity`、`title` 快照；
+9a. 比较 `coverage_rules`/`coverage_lines` 中每条线覆盖记录与报告 `coverage` 段逐字段一致；
 10. 用报告 findings 重新汇总总数、级别数和图层数，与 summary 比较。
 
 一致返回 `0`；任一不一致打印问题并返回 `1`；报告/台账不可读等结构化错误返回 `2`。

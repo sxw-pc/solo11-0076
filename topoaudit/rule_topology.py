@@ -1,4 +1,9 @@
-"""Layer-level topology checks: identities, overlaps, and line endpoints."""
+"""Layer-level topology checks: identities, overlaps, and line endpoints.
+
+Line-coverage auditing lives in :mod:`topoaudit.rule_coverage`; the public
+entry point ``check_line_coverage`` is re-exported here for callers that
+import from this module.
+"""
 from __future__ import annotations
 from typing import Any, Optional
 from .findings import FindingCollector
@@ -16,7 +21,10 @@ from .geometry import (
 )
 from .model import Feature, LayerConfig, Tolerance
 from .normalize import canonical_geometry
+from .rule_coverage import COVERAGE_RULE_ID, check_line_coverage
 from .util import canonical_json, sha256_text, stable_round
+
+__all__ = ["check_layer_topology", "check_line_coverage", "COVERAGE_RULE_ID"]
 
 def check_layer_topology(
     features: tuple[Feature, ...],

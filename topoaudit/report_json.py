@@ -32,20 +32,12 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "input_files": [item.as_dict() for item in result.input_files],
         "limitations": list(result.limitations),
     }
+    if result.coverage:
+        payload["coverage"] = list(result.coverage)
     digest = compute_result_digest(payload)
-    return {
-        "schema_version": payload["schema_version"],
-        "run_label": payload["run_label"],
-        "config_digest": payload["config_digest"],
-        "input_digest": payload["input_digest"],
-        "result_digest": digest,
-        "summary": payload["summary"],
-        "layers": payload["layers"],
-        "rules": payload["rules"],
-        "findings": payload["findings"],
-        "input_files": payload["input_files"],
-        "limitations": payload["limitations"],
-    }
+    report: dict[str, Any] = dict(payload)
+    report["result_digest"] = digest
+    return report
 
 def compute_result_digest(report: dict[str, Any]) -> str:
     payload = {key: value for key, value in report.items() if key != "result_digest"}

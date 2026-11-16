@@ -40,7 +40,7 @@ def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -
         layer_count = _compare_layers(connection, digest, report, issues)
         finding_count = _compare_findings(connection, digest, report, issues)
         _compare_inputs(connection, digest, report, issues)
-        _compare_rule_catalog(connection, report, issues)
+        _compare_catalog_and_coverage(connection, digest, report, issues)
         _compare_summary(report, issues)
     except sqlite3.Error as exc:
         raise LedgerError("TOPO-LED-005", f"读取台账失败: {exc}", str(ledger_path)) from exc
@@ -180,6 +180,70 @@ def _compare_rule_catalog(
     for rule_id in sorted(ledger):
         if canonical_json(ledger[rule_id]) != canonical_json(reported[rule_id]):
             issues.append(f"规则 {rule_id} 的目录快照不一致")
+def _compare_catalog_and_coverage(
+    connection: sqlite3.Connection,
+    digest: str,
+    report: dict[str, Any],
+    issues: list[str],
+) -> None:
+    _compare_rule_catalog(connection, report, issues)
+    rows = connection.execute(
+        "SELECT rule_id, section_json FROM coverage_rules WHERE result_digest = ?",
+        (digest,),
+    ).fetchall()
+    ledger = {row["rule_id"]: json.loads(row["section_json"]) for row in rows}
+    reported = {
+        str(item.get("rule_id")): item for item in report.get("coverage", [])
+    }
+    if set(ledger) != set(reported):
+        issues.append("台账 coverage_rules 与报告 coverage 规则集合不一致")
+    for rule_id in sorted(set(ledger) & set(reported)):
+        if canonical_json(ledger[rule_id]) != canonical_json(reported[rule_id]):
+            issues.append(f"coverage 规则 {rule_id} 与台账不一致")
+    line_rows = connection.execute(
+        """
+        SELECT rule_id, layer_id, feature_id, status, total_length,
+               covered_length, uncovered_length, undetermined_length,
+               record_json
+        FROM coverage_lines WHERE result_digest = ?
+        """,
+        (digest,),
+    ).fetchall()
+    ledger_lines: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in line_rows:
+        record = json.loads(row["record_json"])
+        # The denormalised scalar columns must agree with the JSON blob;
+        # otherwise a reader selecting columns would see a different
+        # verdict than a reader selecting record_json.
+        columns = {
+            "status": row["status"],
+            "total_length": row["total_length"],
+            "covered_length": row["covered_length"],
+            "uncovered_length": row["uncovered_length"],
+            "undetermined_length": row["undetermined_length"],
+        }
+        for field, value in columns.items():
+            if record.get(field) != value:
+                issues.append(
+                    "coverage_lines 列 %s 与 record_json 不一致: %s/%s/%s"
+                    % (field, row["rule_id"], row["layer_id"], row["feature_id"])
+                )
+        ledger_lines[(row["rule_id"], row["layer_id"], row["feature_id"])] = record
+    reported_lines: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for section in report.get("coverage", []):
+        rule_id = str(section.get("rule_id", ""))
+        layer_id = str(section.get("line_layer", ""))
+        for record in section.get("lines", []):
+            key = (rule_id, layer_id, str(record.get("feature_id", "")))
+            if key in reported_lines:
+                issues.append(f"报告 coverage 记录重复: {key}")
+            reported_lines[key] = record
+    if set(ledger_lines) != set(reported_lines):
+        issues.append("台账 coverage_lines 与报告线覆盖记录集合不一致")
+    for key in sorted(set(ledger_lines) & set(reported_lines)):
+        if canonical_json(ledger_lines[key]) != canonical_json(reported_lines[key]):
+            issues.append(f"coverage 记录 {key[0]}/{key[1]}/{key[2]} 与台账不一致")
+
 def _compare_summary(report: dict[str, Any], issues: list[str]) -> None:
     summary = report.get("summary", {})
     findings = report.get("findings", [])

@@ -64,9 +64,35 @@ SCHEMA_STATEMENTS = (
         evidence_fields_json TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS coverage_lines (
+        result_digest TEXT NOT NULL,
+        rule_id TEXT NOT NULL,
+        layer_id TEXT NOT NULL,
+        feature_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        total_length REAL NOT NULL,
+        covered_length REAL NOT NULL,
+        uncovered_length REAL NOT NULL,
+        undetermined_length REAL NOT NULL,
+        record_json TEXT NOT NULL,
+        PRIMARY KEY (result_digest, rule_id, layer_id, feature_id),
+        FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS coverage_rules (
+        result_digest TEXT NOT NULL,
+        rule_id TEXT NOT NULL,
+        section_json TEXT NOT NULL,
+        PRIMARY KEY (result_digest, rule_id),
+        FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(result_digest, severity)",
     "CREATE INDEX IF NOT EXISTS idx_findings_layer ON findings(result_digest, layer_id)",
     "CREATE INDEX IF NOT EXISTS idx_findings_rule ON findings(result_digest, rule_id)",
+    "CREATE INDEX IF NOT EXISTS idx_coverage_status ON coverage_lines(result_digest, status)",
 )
 
 def connect_ledger(path: str | Path, read_only: bool = False) -> sqlite3.Connection:
@@ -193,6 +219,39 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
                         canonical_json(row["evidence_fields"]),
                     ),
                 )
+            for section in report.get("coverage", []):
+                rule_id = str(section.get("rule_id", ""))
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO coverage_rules
+                    (result_digest, rule_id, section_json)
+                    VALUES (?, ?, ?)
+                    """,
+                    (digest, rule_id, canonical_json(section)),
+                )
+                layer_id = str(section.get("line_layer", ""))
+                for record in section.get("lines", []):
+                    connection.execute(
+                        """
+                        INSERT OR IGNORE INTO coverage_lines
+                        (result_digest, rule_id, layer_id, feature_id, status,
+                         total_length, covered_length, uncovered_length,
+                         undetermined_length, record_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            digest,
+                            rule_id,
+                            layer_id,
+                            str(record.get("feature_id", "")),
+                            str(record.get("status", "")),
+                            float(record.get("total_length", 0.0)),
+                            float(record.get("covered_length", 0.0)),
+                            float(record.get("uncovered_length", 0.0)),
+                            float(record.get("undetermined_length", 0.0)),
+                            canonical_json(record),
+                        ),
+                    )
     except sqlite3.Error as exc:
         raise LedgerError("TOPO-LED-004", f"写入台账失败: {exc}", str(path)) from exc
     finally:

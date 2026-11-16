@@ -4,7 +4,7 @@
 
 ## 1. 顶层结构
 
-配置文件必须是 UTF-8 JSON 对象，且只允许以下五个顶层键：
+配置文件必须是 UTF-8 JSON 对象，且只允许以下顶层键：
 
 | 键 | 必填 | 类型 | 说明 |
 | --- | --- | --- | --- |
@@ -13,6 +13,7 @@
 | `tolerance` | 是 | 对象 | 全局容差；对象本身必填，字段可省略取默认值 |
 | `crs` | 是 | 对象 | 全局坐标参考系声明和坐标边界 |
 | `layers` | 是 | 非空数组 | 至少一个图层，图层 ID 不得重复 |
+| `coverage_rules` | 否 | 数组 | 显式的线图层 → 面图层覆盖规则；省略则不执行线覆盖审计 |
 
 任何未知顶层键都会产生 `TOPO-CFG-003`。重复键由 Python JSON 解析器按后者覆盖，不另行检测。
 
@@ -143,6 +144,37 @@ MultiPolygon
 ```
 
 该对象只允许 `name` 和 `type`。当 `name` 或 `type` 与全局 `crs` 不完全一致时，产生图层级 `LAYER_CRS_MISMATCH`。该规则不执行坐标变换。
+
+## 4.6 线覆盖规则 `coverage_rules`
+
+```json
+"coverage_rules": [
+  {
+    "id": "routes-in-permit-zones",
+    "line_layer": "routes",
+    "polygon_layer": "zones",
+    "boundary_mode": "boundary_allowed",
+    "tolerance": 0.5
+  }
+]
+```
+
+| 字段 | 必填 | 约束 |
+| --- | --- | --- |
+| `id` | 是 | 非空字符串，在同一配置内唯一 |
+| `line_layer` | 是 | 已存在的图层 ID，且 `geometry_types` 只含 `LineString`/`MultiLineString` |
+| `polygon_layer` | 是 | 已存在的图层 ID，且 `geometry_types` 只含 `Polygon`/`MultiPolygon`；不得与 `line_layer` 相同 |
+| `boundary_mode` | 是 | `strict_interior` 或 `boundary_allowed`；无默认值 |
+| `tolerance` | 是 | 有限非负数字，单位与输入坐标一致；只用于稳定几何判定和证据定位 |
+| `enabled` | 否 | 布尔值，默认 `true`；也可用线图层 `rules.LINE_COVERAGE.enabled=false` 关闭 |
+
+语义要点：
+
+- 整条线按部件逐段核验，面按外环减洞求并集；重叠面不会重复累计长度。
+- `strict_interior` 只把严格内部长度计为已覆盖；`boundary_allowed` 也接受真实落在外环或洞边的长度。
+- 落在外侧但距边界不超过 `tolerance` 的线段记为 `tolerance_exterior`，两种口径下都不合格，也不会被容差抹掉长度。
+- 面环无效或面图层 `declared_crs` 与全局 `crs` 冲突时，受影响线段记为 `undetermined`，不产生“已覆盖”结论。
+- 覆盖结果写入 JSON 报告的 `coverage` 段、SQLite 的 `coverage_rules` 与 `coverage_lines` 表，并与 `LINE_COVERAGE` finding 的证据一致。
 
 ## 5. GeoJSON 输入
 

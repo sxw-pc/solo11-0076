@@ -21,9 +21,9 @@ class RuleEngineTest(unittest.TestCase):
             cls.by_code.setdefault(finding.rule_id, []).append(finding)
     def test_all_rules_covered_by_fixture(self):
         self.assertEqual(set(self.by_code), set(RULE_IDS))
-        self.assertEqual(len(self.result.findings), 24)
-        self.assertEqual(self.result.summary["total_findings"], 24)
-        self.assertEqual(self.result.summary["severity_counts"], {"error": 15, "warning": 8, "info": 1})
+        self.assertEqual(len(self.result.findings), 29)
+        self.assertEqual(self.result.summary["total_findings"], 29)
+        self.assertEqual(self.result.summary["severity_counts"], {"error": 20, "warning": 8, "info": 1})
     def test_rule_counts(self):
         expected = {
             "SCHEMA_MISSING_FIELD": 3,

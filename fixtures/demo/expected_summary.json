@@ -1,11 +1,11 @@
 {
-  "label": "synthetic-local-vector-audit-v1",
+  "label": "synthetic-local-vector-audit-v2-coverage",
   "notes": "所有计数均由合成 fixture 和确定性规则产生，供端到端测试断言。",
   "expect": {
-    "total_findings": 24,
-    "total_features": 33,
+    "total_findings": 29,
+    "total_features": 44,
     "severity_counts": {
-      "error": 15,
+      "error": 20,
       "warning": 8,
       "info": 1
     },
@@ -19,6 +19,7 @@
       "EMPTY_LAYER": 1,
       "GEOM_UNSUPPORTED_TYPE": 1,
       "LAYER_CRS_MISMATCH": 1,
+      "LINE_COVERAGE": 4,
       "LINE_TOO_FEW_POINTS": 1,
       "NEAR_MISS_ENDPOINT": 1,
       "POLYGON_OVERLAP": 1,
@@ -26,21 +27,79 @@
       "RING_TOO_FEW_POINTS": 1,
       "SCHEMA_MISSING_FIELD": 3,
       "SCHEMA_TYPE_MISMATCH": 2,
-      "SELF_INTERSECTION": 1,
+      "SELF_INTERSECTION": 2,
       "SLIVER_POLYGON": 1,
       "ZERO_LENGTH_SEGMENT": 1
     },
     "findings_by_layer": {
+      "empty": 1,
       "parcels": 7,
-      "roads": 11,
       "points": 5,
-      "empty": 1
+      "roads": 11,
+      "routes": 4,
+      "zones": 1
     },
     "layer_feature_counts": {
       "parcels": 12,
       "roads": 14,
       "points": 7,
-      "empty": 0
+      "empty": 0,
+      "zones": 3,
+      "routes": 8
+    }
+  },
+  "coverage_expect": {
+    "routes-in-permit-zones": {
+      "boundary_mode": "boundary_allowed",
+      "status_counts": {
+        "covered": 4,
+        "partial": 2,
+        "uncovered": 1,
+        "undetermined": 1,
+        "empty": 0
+      },
+      "lines": {
+        "RT-001": {
+          "status": "partial",
+          "uncovered_length": 30.0,
+          "undetermined_length": 0.0
+        },
+        "RT-002": {
+          "status": "covered",
+          "uncovered_length": 0.0,
+          "undetermined_length": 0.0
+        },
+        "RT-003": {
+          "status": "covered",
+          "uncovered_length": 0.0,
+          "undetermined_length": 0.0
+        },
+        "RT-004": {
+          "status": "partial",
+          "uncovered_length": 0.5,
+          "undetermined_length": 0.0
+        },
+        "RT-005": {
+          "status": "undetermined",
+          "uncovered_length": 10.0,
+          "undetermined_length": 20.0
+        },
+        "RT-006": {
+          "status": "covered",
+          "uncovered_length": 0.0,
+          "undetermined_length": 0.0
+        },
+        "RT-007": {
+          "status": "covered",
+          "uncovered_length": 0.0,
+          "undetermined_length": 0.0
+        },
+        "RT-008": {
+          "status": "uncovered",
+          "uncovered_length": 10.0,
+          "undetermined_length": 0.0
+        }
+      }
     }
   }
 }

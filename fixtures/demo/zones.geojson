@@ -1,0 +1,36 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"zone_id": "Z-001", "kind": "permit", "level": 1},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[800, 800], [860, 800], [860, 860], [800, 860], [800, 800]],
+          [[820, 820], [840, 820], [840, 840], [820, 840], [820, 820]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"zone_id": "Z-002", "kind": "permit", "level": 1},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[860, 800], [900, 800], [900, 860], [860, 860], [860, 800]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"zone_id": "Z-BAD", "kind": "permit", "level": 1},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[920, 800], [940, 800], [920, 820], [940, 820], [920, 800]]
+        ]
+      }
+    }
+  ]
+}

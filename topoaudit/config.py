@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 from .config_schema import parse_crs, parse_layer, parse_tolerance
+from .coverage_config import parse_coverage_rules
 from .errors import ConfigError
 from .model import AuditConfig
 from .util import canonical_json, sha256_text
@@ -26,7 +27,7 @@ def load_config(path: str | Path) -> AuditConfig:
         raise ConfigError("TOPO-CFG-004", "配置根节点必须是 JSON 对象", "$")
     _reject_unknown(
         raw,
-        {"schema_version", "run_label", "tolerance", "crs", "layers"},
+        {"schema_version", "run_label", "tolerance", "crs", "layers", "coverage_rules"},
         "$",
     )
     schema_version = _require(raw, "schema_version", "$")
@@ -54,13 +55,18 @@ def load_config(path: str | Path) -> AuditConfig:
             )
         seen_ids.add(layer.layer_id)
         layers.append(layer)
-    public = {
+    coverage_rules = parse_coverage_rules(
+        raw.get("coverage_rules"), "$.coverage_rules", tuple(layers)
+    )
+    public: dict[str, Any] = {
         "schema_version": CONFIG_SCHEMA_VERSION,
         "run_label": run_label,
         "tolerance": tolerance.as_dict(),
         "crs": crs.as_dict(),
         "layers": [layer.as_dict() for layer in layers],
     }
+    if coverage_rules:
+        public["coverage_rules"] = [rule.as_dict() for rule in coverage_rules]
     config_digest = sha256_text(canonical_json(public))
     return AuditConfig(
         path=config_path,
@@ -70,6 +76,7 @@ def load_config(path: str | Path) -> AuditConfig:
         tolerance=tolerance,
         crs=crs,
         layers=tuple(layers),
+        coverage_rules=coverage_rules,
     )
 def _reject_unknown(raw: dict[str, Any], allowed: set[str], path: str) -> None:
     for key in raw:

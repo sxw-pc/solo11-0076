@@ -31,10 +31,10 @@ class CliDemoTest(unittest.TestCase):
             for name in ("report.json", "report.md", "report.html", "audit.sqlite", "inputs.json", "summary.txt"):
                 self.assertTrue((out / name).is_file(), name)
             report = json.loads((out / "report.json").read_text(encoding="utf-8"))
-            self.assertEqual(report["summary"]["total_findings"], 24)
-            self.assertEqual(report["summary"]["total_features"], 33)
-            self.assertEqual(len(report["findings"]), 24)
-            self.assertEqual({item["rule_id"] for item in report["findings"]}, set(report["rules"][i]["rule_id"] for i in range(19)))
+            self.assertEqual(report["summary"]["total_findings"], 29)
+            self.assertEqual(report["summary"]["total_features"], 44)
+            self.assertEqual(len(report["findings"]), 29)
+            self.assertEqual({item["rule_id"] for item in report["findings"]}, set(report["rules"][i]["rule_id"] for i in range(20)))
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["verify", "--report", str(out / "report.json"), "--ledger", str(out / "audit.sqlite")]), 0)
             with contextlib.redirect_stdout(io.StringIO()):
@@ -54,7 +54,7 @@ class CliDemoTest(unittest.TestCase):
             connection = sqlite3.connect(first / "audit.sqlite")
             try:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM runs").fetchone()[0], 1)
-                self.assertEqual(connection.execute("SELECT COUNT(*) FROM findings").fetchone()[0], 24)
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM findings").fetchone()[0], 29)
             finally:
                 connection.close()
     def test_demo_refuses_output_inside_fixtures(self):

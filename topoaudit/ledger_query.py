@@ -162,3 +162,50 @@ def get_rule_catalog(path: str | Path) -> list[dict[str, Any]]:
         ]
     finally:
         connection.close()
+
+def get_coverage(
+    path: str | Path,
+    digest: str,
+    rule_id: Optional[str] = None,
+    layer_id: Optional[str] = None,
+    status: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Return persisted per-line coverage records for a run.
+
+    Records are the exact JSON blob written into the ledger, so a reviewer
+    can compare report evidence with storage byte-for-byte.
+    """
+    connection = connect_ledger(path, read_only=True)
+    try:
+        clauses = ["result_digest = ?"]
+        params: list[Any] = [digest]
+        if rule_id is not None:
+            clauses.append("rule_id = ?")
+            params.append(rule_id)
+        if layer_id is not None:
+            clauses.append("layer_id = ?")
+            params.append(layer_id)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        rows = connection.execute(
+            "SELECT record_json FROM coverage_lines WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY rule_id, layer_id, feature_id",
+            tuple(params),
+        ).fetchall()
+        return [json.loads(row["record_json"]) for row in rows]
+    finally:
+        connection.close()
+
+def get_coverage_sections(path: str | Path, digest: str) -> list[dict[str, Any]]:
+    connection = connect_ledger(path, read_only=True)
+    try:
+        rows = connection.execute(
+            "SELECT section_json FROM coverage_rules WHERE result_digest = ? "
+            "ORDER BY rule_id",
+            (digest,),
+        ).fetchall()
+        return [json.loads(row["section_json"]) for row in rows]
+    finally:
+        connection.close()

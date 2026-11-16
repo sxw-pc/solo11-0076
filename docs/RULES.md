@@ -1,6 +1,6 @@
 # 规则目录与语义
 
-`topoaudit` 固定提供 19 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
+`topoaudit` 固定提供 20 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
 
 ## 1. 通用语义
 
@@ -36,6 +36,7 @@
 | 17 | `NEAR_MISS_ENDPOINT` | info | 不同要素端点距离大于坐标容差且不超过近接容差 | `endpoint_a`、`endpoint_b`、`distance`、`tolerance` |
 | 18 | `LAYER_CRS_MISMATCH` | error | 图层 `declared_crs` 的名称或类型与全局 `crs` 不一致 | `expected_crs`、`declared_crs` |
 | 19 | `EMPTY_LAYER` | warning | 图层加载后要素数为 0 | `feature_count` |
+| 20 | `LINE_COVERAGE` | error | 配置声明的线图层未被指定面图层按并集连续覆盖（含洞、边界口径、无效面与 CRS 冲突） | `status`、`total_length`、`covered_length`、`uncovered_length`、`undetermined_length`、`lengths`、`uncovered_slices`、`boundary_mode`、`tolerance` |
 
 ## 3. 逐条说明
 
@@ -178,27 +179,62 @@ coordinate_epsilon < distance <= near_miss_distance
 
 图层成功加载但要素数为 0 时报告。空的 FeatureCollection 是合法输入，不是加载错误。空 CSV（只有表头）同样产生该 finding。
 
+
+### 3.6 线覆盖规则
+
+**`LINE_COVERAGE`**
+
+该规则不是逐图层自检，而是由配置中的 `coverage_rules` 显式声明的“线图层 → 面图层”审计：整条线（LineString / MultiLineString 的每个部件、每条线段）是否被面图层的**并集**连续覆盖，而不是只看起终点。它与面图层自身的 `SELF_INTERSECTION`、`RING_NOT_CLOSED` 等结构规则共同工作，但判定来源是 `geometry.polygon_validity`，不是“面图层有告警就算通过”。
+
+**几何口径**
+
+- 线按全部 LineString / MultiLineString 部件逐段核验；每条线段在面环交点处切分为同质区段。
+- 面按 Polygon / MultiPolygon 的“外环减洞”求并集。重叠面、共边面和跨相接面都只累计一次长度，不会重复计算同一段。
+- 恰好在外环上、沿外环行走、沿洞边走、只与外环相切、以及在外环内两个端点之间穿过洞，均有确定分类。
+- 区段分类为 `interior`、`boundary_outer`、`boundary_hole`、`tolerance_exterior`、`exterior`、`undetermined` 之一。
+
+**边界业务口径**
+
+`boundary_mode` 必须显式声明，不存在默认值：
+
+| 口径 | 计入已覆盖的长度 | 同一条沿边线的结论 |
+| --- | --- | --- |
+| `strict_interior` | 仅 `interior` | 不合格（`uncovered`） |
+| `boundary_allowed` | `interior` + `boundary_outer` + `boundary_hole` | 合格（`covered`） |
+
+`tolerance_exterior`（真实落在面外、但与外环距离不超过 `tolerance` 的线段）在两种口径下都不计入已覆盖长度，只是作为可复核证据单独记录。容差只用于稳定几何判定和证据定位，不会把落在外部的真实长度四舍五入掉，也不会把外部线段吸进边界。
+
+**无效面与 CRS 冲突**
+
+- 面环未闭合、点数不足、退化、自交时，该面部件不参与任何“已覆盖”结论；落入该部件 bbox（含容差）的线区段标为 `undetermined`，并在证据里给出 `invalid_polygon_sources`（要素 ID、部件、原因）。
+- 面图层 `declared_crs` 与全局 `crs` 不一致时，该覆盖规则对全部相关线给出 `undetermined`，证据带 `polygon_layer_crs_reason: declared_crs_mismatch`。
+- 无效面只影响其自身覆盖范围；其他独立面区域仍然正常审计。若线段先落在有效面内，再进入无效面 bbox，则分别累计 `interior` 与 `undetermined`。
+
+**状态与证据**
+
+每条线输出 `status`（`covered` / `partial` / `uncovered` / `undetermined` / `empty`）、`total_length`、`covered_length`、`uncovered_length`、`undetermined_length`、按区段类别汇总的 `lengths`，以及 `uncovered_slices`。每个未覆盖区段都保留原始线段坐标 `start`/`end`、所属 `part` 和 `segment` 索引，可直接复核。`LINE_COVERAGE` finding 证据、JSON 报告的 `coverage` 段、SQLite 的 `coverage_lines` / `coverage_rules` 表三处内容一致。
+
 ## 4. 演示 fixture 覆盖
 
-`fixtures/demo` 的预期 finding 计数为 24，覆盖全部 19 条规则：
+`fixtures/demo` 的预期 finding 计数为 29，覆盖全部 20 条规则：
 
 | 规则 | 计数 | 规则 | 计数 | 规则 | 计数 |
 | --- | ---: | --- | ---: | --- | ---: |
 | `SCHEMA_MISSING_FIELD` | 3 | `SCHEMA_TYPE_MISMATCH` | 2 | `COORD_NON_FINITE` | 1 |
 | `COORD_OUT_OF_BOUNDS` | 1 | `GEOM_UNSUPPORTED_TYPE` | 1 | `RING_NOT_CLOSED` | 1 |
 | `RING_TOO_FEW_POINTS` | 1 | `LINE_TOO_FEW_POINTS` | 1 | `DUPLICATE_CONSECUTIVE_VERTEX` | 1 |
-| `ZERO_LENGTH_SEGMENT` | 1 | `SELF_INTERSECTION` | 1 | `DUPLICATE_FEATURE_ID` | 1 |
+| `ZERO_LENGTH_SEGMENT` | 1 | `SELF_INTERSECTION` | 2 | `DUPLICATE_FEATURE_ID` | 1 |
 | `DUPLICATE_GEOMETRY` | 1 | `POLYGON_OVERLAP` | 1 | `SLIVER_POLYGON` | 1 |
 | `DANGLING_ENDPOINT` | 3 | `NEAR_MISS_ENDPOINT` | 1 | `LAYER_CRS_MISMATCH` | 1 |
-| `EMPTY_LAYER` | 1 |  |  |  |  |
+| `EMPTY_LAYER` | 1 | `LINE_COVERAGE` | 4 |  |  |
 
-按图层：`parcels=7`、`roads=11`、`points=5`、`empty=1`。按级别：`error=15`、`warning=8`、`info=1`。完整预期见 `fixtures/demo/expected_summary.json`。
+按图层：`parcels=7`、`roads=11`、`points=5`、`empty=1`、`zones=1`、`routes=4`。按级别：`error=20`、`warning=8`、`info=1`。完整预期见 `fixtures/demo/expected_summary.json`。
 
 ## 5. 已知判定限制
 
 - 所有检查是二维平面的，不进行大地测量或投影换算。
 - 不执行完整平面图构建，不检查节点度数、连通分量、悬挂链或面网闭合环。
-- 不检查跨图层拓扑、跨图层重复、跨图层压盖。
+- 跨图层拓扑仅限配置显式声明的 `coverage_rules`（线覆盖面）；不检查其他跨图层拓扑、跨图层重复或跨图层压盖。
 - 不检查 Z/M 值、坐标精度来源、拓扑规则库或 OGC 简单要素的全部合法性问题。
 - 压盖是保守布尔判定，不计算面积；狭长是面积/周长启发式。
 - 重复几何以配置容差量化，容差变化可能改变“重复”的范围和 finding ID。

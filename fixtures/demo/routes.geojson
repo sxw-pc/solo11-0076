@@ -1,0 +1,69 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-001", "class": "through-hole", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[790, 830], [870, 830]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-002", "class": "across-adjacent", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[850, 850], [880, 850]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-003", "class": "on-hole-edge", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[820, 820], [840, 820]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-004", "class": "outside-tolerance", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[799.5, 850], [810, 850]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-005", "class": "near-invalid-face", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[915, 810], [945, 810]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-006", "class": "inside", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[805, 805], [815, 805]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-007", "class": "on-outer-edge", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[800, 810], [800, 830]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {"route_id": "RT-008", "class": "tangent", "lanes": 1},
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[790, 800], [800, 800]]
+      }
+    }
+  ]
+}
