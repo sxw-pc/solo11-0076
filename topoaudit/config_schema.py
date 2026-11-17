@@ -9,6 +9,7 @@ from .model import (
     SUPPORTED_SCHEMA_TYPES,
     Bounds,
     CRS,
+    ClearanceContract,
     DeclaredCRS,
     FieldSpec,
     LayerConfig,
@@ -71,6 +72,7 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
         "rules",
         "thresholds",
         "declared_crs",
+        "clearance_contract",
     }
     obj = _object(raw, path, allowed)
     layer_id = _nonempty_string(_require(obj, "id", path), f"{path}.id")
@@ -101,6 +103,9 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
     rules = _parse_rules(obj.get("rules", {}), f"{path}.rules")
     thresholds = _parse_layer_thresholds(obj.get("thresholds", {}), f"{path}.thresholds")
     declared = _parse_declared_crs(obj.get("declared_crs"), f"{path}.declared_crs")
+    clearance = _parse_clearance_contract(
+        obj.get("clearance_contract"), f"{path}.clearance_contract"
+    )
     return LayerConfig(
         layer_id=layer_id,
         path=source,
@@ -112,6 +117,7 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
         rules=rules,
         threshold_overrides=thresholds,
         declared_crs=declared,
+        clearance_contract=clearance,
     )
 def _parse_schema(raw: Any, path: str) -> dict[str, FieldSpec]:
     if not isinstance(raw, dict):
@@ -166,6 +172,42 @@ def _parse_declared_crs(raw: Any, path: str) -> DeclaredCRS | None:
     if kind not in ("planar", "geographic"):
         raise ConfigError("TOPO-CFG-006", "declared_crs.type 必须是 planar 或 geographic", f"{path}.type")
     return DeclaredCRS(name=name, kind=kind)
+def _parse_clearance_contract(raw: Any, path: str) -> ClearanceContract | None:
+    if raw is None:
+        return None
+    obj = _object(raw, path, {"clearance_width", "min_core_area", "usage_contract"})
+    clearance_width = _finite_number(
+        _require(obj, "clearance_width", path), f"{path}.clearance_width"
+    )
+    if clearance_width <= 0:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "clearance_width 必须大于 0",
+            f"{path}.clearance_width",
+        )
+    min_core_area = _finite_number(
+        _require(obj, "min_core_area", path), f"{path}.min_core_area"
+    )
+    if min_core_area <= 0:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "min_core_area 必须大于 0",
+            f"{path}.min_core_area",
+        )
+    usage_contract = _nonempty_string(
+        _require(obj, "usage_contract", path), f"{path}.usage_contract"
+    )
+    if usage_contract not in ("land_compactness", "access_clearance"):
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "usage_contract 只能是 land_compactness 或 access_clearance",
+            f"{path}.usage_contract",
+        )
+    return ClearanceContract(
+        clearance_width=clearance_width,
+        min_core_area=min_core_area,
+        usage_contract=usage_contract,
+    )
 def _object(raw: Any, path: str, allowed: set[str]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ConfigError("TOPO-CFG-004", "此处必须是 JSON 对象", path)

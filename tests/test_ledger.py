@@ -38,11 +38,11 @@ class LedgerTest(unittest.TestCase):
     def test_schema_and_rows(self):
         self.assertEqual(
             self._counts(),
-            {"runs": 1, "layers": 4, "findings": 24, "input_files": 4, "rule_catalog": 19},
+            {"runs": 1, "layers": 4, "findings": 24, "input_files": 4, "rule_catalog": 23},
         )
         self.assertEqual(get_run(self.ledger, self.digest)["run_label"], "demo-local-topology")
         self.assertEqual(len(get_input_files(self.ledger, self.digest)), 4)
-        self.assertEqual(len(get_rule_catalog(self.ledger)), 19)
+        self.assertEqual(len(get_rule_catalog(self.ledger)), 23)
         self.assertTrue(run_exists(self.ledger, self.digest))
         self.assertFalse(run_exists(self.ledger, "0" * 64))
     def test_idempotent_write_by_result_digest(self):

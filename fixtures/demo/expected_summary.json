@@ -10,6 +10,9 @@
       "info": 1
     },
     "findings_by_code": {
+      "BLOCKING_NARROW_NECK": 0,
+      "CLEARANCE_AUDIT_UNKNOWN": 0,
+      "CLEARANCE_CONNECTIVITY_OK": 0,
       "COORD_NON_FINITE": 1,
       "COORD_OUT_OF_BOUNDS": 1,
       "DANGLING_ENDPOINT": 3,
@@ -20,6 +23,7 @@
       "GEOM_UNSUPPORTED_TYPE": 1,
       "LAYER_CRS_MISMATCH": 1,
       "LINE_TOO_FEW_POINTS": 1,
+      "NARROW_NECK_OBSERVATION": 0,
       "NEAR_MISS_ENDPOINT": 1,
       "POLYGON_OVERLAP": 1,
       "RING_NOT_CLOSED": 1,

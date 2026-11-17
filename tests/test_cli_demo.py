@@ -34,7 +34,18 @@ class CliDemoTest(unittest.TestCase):
             self.assertEqual(report["summary"]["total_findings"], 24)
             self.assertEqual(report["summary"]["total_features"], 33)
             self.assertEqual(len(report["findings"]), 24)
-            self.assertEqual({item["rule_id"] for item in report["findings"]}, set(report["rules"][i]["rule_id"] for i in range(19)))
+            catalog_ids = {item["rule_id"] for item in report["rules"]}
+            # The catalog lists all 23 rules; the demo fixture triggers 19 of
+            # them because no layer declares a clearance contract.
+            self.assertEqual(len(report["rules"]), 23)
+            self.assertTrue(
+                {item["rule_id"] for item in report["findings"]}.issubset(catalog_ids)
+            )
+            self.assertEqual(
+                {item["rule_id"] for item in report["findings"]
+                 if item["rule_id"].startswith(("BLOCKING", "NARROW", "CLEARANCE"))},
+                set(),
+            )
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["verify", "--report", str(out / "report.json"), "--ledger", str(out / "audit.sqlite")]), 0)
             with contextlib.redirect_stdout(io.StringIO()):

@@ -1,6 +1,6 @@
 # 规则目录与语义
 
-`topoaudit` 固定提供 19 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
+`topoaudit` 固定提供 23 条规则。规则 ID、严重级别、标题、说明和证据字段由 `topoaudit/rules_catalog.py` 中的不可变目录定义；报告的 `rules` 数组和 SQLite 的 `rule_catalog` 表都来自同一目录。
 
 ## 1. 通用语义
 
@@ -32,10 +32,14 @@
 | 13 | `DUPLICATE_GEOMETRY` | warning | 规范几何签名完全相同 | `geometry_digest`、首末 `source_index`、`coordinate_epsilon` |
 | 14 | `POLYGON_OVERLAP` | error | 两个不同要素的有效多边形内部重叠 | `pair`、`component_indexes`、`bbox_intersection` |
 | 15 | `SLIVER_POLYGON` | warning | 有效多边形面积/周长比低于 `sliver_ratio` | `part_index`、`area`、`perimeter`、`ratio`、`threshold` |
-| 16 | `DANGLING_ENDPOINT` | warning | 线端点附近没有其他要素的线端点 | `part_index`、`endpoint`、`coordinate`、`nearest_feature_id`、`nearest_distance`、`tolerance` |
-| 17 | `NEAR_MISS_ENDPOINT` | info | 不同要素端点距离大于坐标容差且不超过近接容差 | `endpoint_a`、`endpoint_b`、`distance`、`tolerance` |
-| 18 | `LAYER_CRS_MISMATCH` | error | 图层 `declared_crs` 的名称或类型与全局 `crs` 不一致 | `expected_crs`、`declared_crs` |
-| 19 | `EMPTY_LAYER` | warning | 图层加载后要素数为 0 | `feature_count` |
+| 16 | `BLOCKING_NARROW_NECK` | error | `access_clearance` 合同下，两个原已连通且面积均不低于 `min_core_area` 的核心在 `clearance_width` 净空后断开 | `contract`、`clearance_width`、`min_core_area`、`parts`、`input_summary` |
+| 17 | `NARROW_NECK_OBSERVATION` | info | `land_compactness` 合同下净空后核心断开，仅作明示观察，不阻断交付 | `contract`、`clearance_width`、`min_core_area`、`parts`、`input_summary` |
+| 18 | `CLEARANCE_CONNECTIVITY_OK` | info | 所有足够大的核心在声明净空下保持正面积连通 | `contract`、`clearance_width`、`min_core_area`、`parts`、`input_summary` |
+| 19 | `CLEARANCE_AUDIT_UNKNOWN` | warning | 面不满足轴对齐/可证有效前提，或净空阈值不高于坐标容差，无法给出裁定 | `contract`、`clearance_width`、`min_core_area`、`parts`、`reason` |
+| 20 | `DANGLING_ENDPOINT` | warning | 线端点附近没有其他要素的线端点 | `part_index`、`endpoint`、`coordinate`、`nearest_feature_id`、`nearest_distance`、`tolerance` |
+| 21 | `NEAR_MISS_ENDPOINT` | info | 不同要素端点距离大于坐标容差且不超过近接容差 | `endpoint_a`、`endpoint_b`、`distance`、`tolerance` |
+| 22 | `LAYER_CRS_MISMATCH` | error | 图层 `declared_crs` 的名称或类型与全局 `crs` 不一致 | `expected_crs`、`declared_crs` |
+| 23 | `EMPTY_LAYER` | warning | 图层加载后要素数为 0 | `feature_count` |
 
 ## 3. 逐条说明
 
@@ -144,6 +148,31 @@ ratio     = area / perimeter（周长为 0 时为 0）
 
 `ratio < sliver_ratio` 时报告。面积、周长和比率在证据中按 9 位小数稳定舍入。该阈值是形态启发式，不表达法律或制图规范。
 
+#### 正交净空连通裁定（单面形状审计）
+
+当图层声明 `clearance_contract` 时，对该图层的每个 `Polygon`/`MultiPolygon` 要素额外执行只读的连续平面净空裁定。裁定只在满足全部适用前提时给出结论，否则返回 `unknown`，绝不伪报通过：
+
+- 仅适用于二维、每条非退化边都与坐标轴平行、可证有效的面；外环不得自接触或重复顶点，孔必须严格位于外环内部且孔与孔互不接触。
+- 斜边、未闭合/点数不足的环、自接触环、孔接触外环或互相接触都不满足前提，对应 `CLEARANCE_AUDIT_UNKNOWN`。
+- `clearance_width <= coordinate_epsilon` 时无法在容差内区分净空，同样返回 `unknown`。
+
+算法不使用固定栅格采样：排列网格由面自身的全部边坐标与每条边坐标加/减侵蚀半宽 `h = clearance_width / 2` 的偏移线构成。对每个网格单元，用精确的矩形到轴对齐线段距离判定其开放内部是否存在与所有边界（外环和孔边界同等约束）距离至少为 `h` 的点；宽度恰好为 `clearance_width` 的通道没有二维单元，但其中线以网格边形式保留，仍判为可通行。仅共点接触不会合并正面积连通分量。
+
+裁定语义：
+
+1. 计算侵蚀后区域的正面积连通分量及其面积、包围盒。
+2. 面积 `>= min_core_area` 的分量记为“核心”，更小的分量记为子核心碎片（例如细窄死端被侵蚀后的残余）。
+3. 只有当同一面部件内部**原本连通**的两个（或更多）核心在净空后落入不同分量时，才构成 `blocking_narrow_neck`。细窄死端不会制造第二个核心，因此不报阻断。
+4. 证据包含断开的核心（面积、包围盒、分量索引对）、候选颈部位置（核心包围盒间隙与见证点）、收缩证据（相对的两条边界线段、环索引、净宽与面内见证点），以及全局面积、周长、面积周长比等输入摘要。
+5. `MultiPolygon` 的各部件独立裁定；源数据中本就分离的部件不会被归因于净空侵蚀。
+
+两种用途合同彼此独立授权，但始终输出同一份完整证据：
+
+- `land_compactness`：交付门禁**只**认全局面积/周长比（即 `SLIVER_POLYGON`）。净空后核心断开只产生 info 级 `NARROW_NECK_OBSERVATION` 明示观察，不产生 error。因此全局形状正常（如哑铃面积/周长比约 2.397，高于默认 `sliver_ratio=0.1`）但细颈不达净空的面，可以通过形状门禁。
+- `access_clearance`：在相同证据之上，额外要求所有足够大的核心在声明净空下互相连通；不满足时产生 error 级 `BLOCKING_NARROW_NECK`。
+- 满足连通要求时两种合同都产生 info 级 `CLEARANCE_CONNECTIVITY_OK`，其中仍完整给出全局比与净空连通证据。
+- 不允许通过调高 `sliver_ratio` 来等价表达净空门禁：两条规则、两类阈值相互独立。
+
 ### 3.4 线端点规则
 
 两条端点规则只考虑：
@@ -180,7 +209,7 @@ coordinate_epsilon < distance <= near_miss_distance
 
 ## 4. 演示 fixture 覆盖
 
-`fixtures/demo` 的预期 finding 计数为 24，覆盖全部 19 条规则：
+`fixtures/demo` 的预期 finding 计数为 24，覆盖最初的 19 条规则（新增的 4 条净空规则在该 fixture 中计数为 0，因为其图层未声明 `clearance_contract`）：
 
 | 规则 | 计数 | 规则 | 计数 | 规则 | 计数 |
 | --- | ---: | --- | ---: | --- | ---: |
@@ -194,12 +223,15 @@ coordinate_epsilon < distance <= near_miss_distance
 
 按图层：`parcels=7`、`roads=11`、`points=5`、`empty=1`。按级别：`error=15`、`warning=8`、`info=1`。完整预期见 `fixtures/demo/expected_summary.json`。
 
+`fixtures/clearance` 是净空裁定的专用合成 fixture：同一份 `clearance.geojson`（哑铃窄桥、同宽死端、洞侵占通道、恰好满足净空、共点接触、已分离 MultiPolygon、斜边/无效面）由 `config_land.json`（`land_compactness`）与 `config_access.json`（`access_clearance`）分别审计，用于核对两种合同在同一证据上的门禁差异，以及报告与 SQLite 台账的一致性。
+
 ## 5. 已知判定限制
 
 - 所有检查是二维平面的，不进行大地测量或投影换算。
-- 不执行完整平面图构建，不检查节点度数、连通分量、悬挂链或面网闭合环。
+- 不执行完整平面图构建，不检查节点度数、连通分量、悬挂链或面网闭合环（净空裁定内部的连通分量是侵蚀排列上的精确分量，不是通用面网拓扑）。
 - 不检查跨图层拓扑、跨图层重复、跨图层压盖。
 - 不检查 Z/M 值、坐标精度来源、拓扑规则库或 OGC 简单要素的全部合法性问题。
 - 压盖是保守布尔判定，不计算面积；狭长是面积/周长启发式。
+- 净空连通裁定只覆盖边与坐标轴平行且可证有效的二维 Polygon/MultiPolygon（可含孔）；斜边、曲线边、自接触或其他不可证有效的面返回 `unknown`，不做栅格化猜测。
 - 重复几何以配置容差量化，容差变化可能改变“重复”的范围和 finding ID。
 - 规则禁用后不会隐式改变其他规则的判定；关闭规则应理解为“接受该类风险”，而不是“修复数据”。

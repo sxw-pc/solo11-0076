@@ -21,6 +21,7 @@ SUPPORTED_SCHEMA_TYPES = (
 )
 SEVERITIES = ("error", "warning", "info")
 SEVERITY_RANK = {"error": 0, "warning": 1, "info": 2}
+CLEARANCE_CONTRACTS = ("land_compactness", "access_clearance")
 @dataclass(frozen=True)
 class Bounds:
     min_x: float
@@ -51,6 +52,25 @@ class DeclaredCRS:
     def as_dict(self) -> dict[str, str]:
         return {"name": self.name, "type": self.kind}
 @dataclass(frozen=True)
+class ClearanceContract:
+    """Declared orthogonal clearance contract for single-face shape audit.
+
+    ``clearance_width`` is the usable passage width that must survive.  The
+    erosion half-width is ``clearance_width / 2``.  ``min_core_area`` is the
+    area above which a surviving connected component counts as a delivery
+    core.  ``usage_contract`` selects how the connectivity evidence gates the
+    delivery decision; both contracts always report the same full evidence.
+    """
+    clearance_width: float
+    min_core_area: float
+    usage_contract: str
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "clearance_width": self.clearance_width,
+            "min_core_area": self.min_core_area,
+            "usage_contract": self.usage_contract,
+        }
+@dataclass(frozen=True)
 class Tolerance:
     coordinate_epsilon: float = 1e-9
     near_miss_distance: float = 1.0
@@ -80,6 +100,7 @@ class LayerConfig:
     rules: dict[str, bool]
     threshold_overrides: dict[str, float]
     declared_crs: Optional[DeclaredCRS]
+    clearance_contract: Optional[ClearanceContract] = None
     def rule_enabled(self, rule_id: str) -> bool:
         return self.rules.get(rule_id, True)
     def effective_tolerance(self, base: Tolerance) -> Tolerance:
@@ -102,6 +123,8 @@ class LayerConfig:
         }
         if self.declared_crs is not None:
             result["declared_crs"] = self.declared_crs.as_dict()
+        if self.clearance_contract is not None:
+            result["clearance_contract"] = self.clearance_contract.as_dict()
         return result
 @dataclass(frozen=True)
 class AuditConfig:

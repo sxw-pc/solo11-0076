@@ -1,0 +1,753 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "DB-BLOCK",
+        "scenario": "dumbbell_narrow_bridge"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              0,
+              0
+            ],
+            [
+              10,
+              0
+            ],
+            [
+              10,
+              4.9
+            ],
+            [
+              12,
+              4.9
+            ],
+            [
+              12,
+              0
+            ],
+            [
+              22,
+              0
+            ],
+            [
+              22,
+              10
+            ],
+            [
+              12,
+              10
+            ],
+            [
+              12,
+              5.1
+            ],
+            [
+              10,
+              5.1
+            ],
+            [
+              10,
+              10
+            ],
+            [
+              0,
+              10
+            ],
+            [
+              0,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "DB-EXACT",
+        "scenario": "dumbbell_exact_fit"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              30,
+              0
+            ],
+            [
+              40,
+              0
+            ],
+            [
+              40,
+              4.8
+            ],
+            [
+              42,
+              4.8
+            ],
+            [
+              42,
+              0
+            ],
+            [
+              52,
+              0
+            ],
+            [
+              52,
+              10
+            ],
+            [
+              42,
+              10
+            ],
+            [
+              42,
+              5.2
+            ],
+            [
+              40,
+              5.2
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              30,
+              10
+            ],
+            [
+              30,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "DB-ROOMY",
+        "scenario": "dumbbell_roomy_bridge"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              60,
+              0
+            ],
+            [
+              70,
+              0
+            ],
+            [
+              70,
+              4.795
+            ],
+            [
+              72,
+              4.795
+            ],
+            [
+              72,
+              0
+            ],
+            [
+              82,
+              0
+            ],
+            [
+              82,
+              10
+            ],
+            [
+              72,
+              10
+            ],
+            [
+              72,
+              5.205
+            ],
+            [
+              70,
+              5.205
+            ],
+            [
+              70,
+              10
+            ],
+            [
+              60,
+              10
+            ],
+            [
+              60,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "DEAD-END",
+        "scenario": "same_width_dead_end"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              90,
+              0
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              100,
+              4.9
+            ],
+            [
+              102,
+              4.9
+            ],
+            [
+              102,
+              5.1
+            ],
+            [
+              100,
+              5.1
+            ],
+            [
+              100,
+              10
+            ],
+            [
+              90,
+              10
+            ],
+            [
+              90,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "HOLE-BLOCK",
+        "scenario": "hole_invades_neck"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              120,
+              0
+            ],
+            [
+              130,
+              0
+            ],
+            [
+              130,
+              10
+            ],
+            [
+              126,
+              10
+            ],
+            [
+              126,
+              12
+            ],
+            [
+              130,
+              12
+            ],
+            [
+              130,
+              22
+            ],
+            [
+              120,
+              22
+            ],
+            [
+              120,
+              12
+            ],
+            [
+              124,
+              12
+            ],
+            [
+              124,
+              10
+            ],
+            [
+              120,
+              10
+            ],
+            [
+              120,
+              0
+            ]
+          ],
+          [
+            [
+              124.15,
+              10.6
+            ],
+            [
+              125.85,
+              10.6
+            ],
+            [
+              125.85,
+              11.4
+            ],
+            [
+              124.15,
+              11.4
+            ],
+            [
+              124.15,
+              10.6
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "HOLE-ROOMY",
+        "scenario": "hole_roomy_neck"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              150,
+              0
+            ],
+            [
+              160,
+              0
+            ],
+            [
+              160,
+              10
+            ],
+            [
+              156,
+              10
+            ],
+            [
+              156,
+              12
+            ],
+            [
+              160,
+              12
+            ],
+            [
+              160,
+              22
+            ],
+            [
+              150,
+              22
+            ],
+            [
+              150,
+              12
+            ],
+            [
+              154,
+              12
+            ],
+            [
+              154,
+              10
+            ],
+            [
+              150,
+              10
+            ],
+            [
+              150,
+              0
+            ]
+          ],
+          [
+            [
+              154.5,
+              10.6
+            ],
+            [
+              155.5,
+              10.6
+            ],
+            [
+              155.5,
+              11.4
+            ],
+            [
+              154.5,
+              11.4
+            ],
+            [
+              154.5,
+              10.6
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "PLAIN",
+        "scenario": "plain_square"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              180,
+              0
+            ],
+            [
+              190,
+              0
+            ],
+            [
+              190,
+              10
+            ],
+            [
+              180,
+              10
+            ],
+            [
+              180,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "POINT-TOUCH",
+        "scenario": "point_only_contact"
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [
+                0,
+                40
+              ],
+              [
+                10,
+                40
+              ],
+              [
+                10,
+                50
+              ],
+              [
+                0,
+                50
+              ],
+              [
+                0,
+                40
+              ]
+            ]
+          ],
+          [
+            [
+              [
+                10,
+                50
+              ],
+              [
+                20,
+                50
+              ],
+              [
+                20,
+                60
+              ],
+              [
+                10,
+                60
+              ],
+              [
+                10,
+                50
+              ]
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "SEPARATED",
+        "scenario": "separated_multipolygon"
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [
+                60,
+                40
+              ],
+              [
+                70,
+                40
+              ],
+              [
+                70,
+                50
+              ],
+              [
+                60,
+                50
+              ],
+              [
+                60,
+                40
+              ]
+            ]
+          ],
+          [
+            [
+              [
+                90,
+                40
+              ],
+              [
+                100,
+                40
+              ],
+              [
+                100,
+                50
+              ],
+              [
+                90,
+                50
+              ],
+              [
+                90,
+                40
+              ]
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "DIAGONAL",
+        "scenario": "slanted_edge"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              120,
+              40
+            ],
+            [
+              130,
+              40
+            ],
+            [
+              130,
+              50
+            ],
+            [
+              125,
+              55
+            ],
+            [
+              120,
+              50
+            ],
+            [
+              120,
+              40
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "UNCLOSED",
+        "scenario": "invalid_ring"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              150,
+              40
+            ],
+            [
+              160,
+              40
+            ],
+            [
+              160,
+              50
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "SELF-TOUCH",
+        "scenario": "self_touch_ring"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              0,
+              80
+            ],
+            [
+              10,
+              80
+            ],
+            [
+              10,
+              90
+            ],
+            [
+              20,
+              90
+            ],
+            [
+              20,
+              100
+            ],
+            [
+              10,
+              100
+            ],
+            [
+              10,
+              90
+            ],
+            [
+              0,
+              90
+            ],
+            [
+              0,
+              80
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "feature_id": "HOLE-TOUCH",
+        "scenario": "hole_touches_outer"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              40,
+              80
+            ],
+            [
+              50,
+              80
+            ],
+            [
+              50,
+              90
+            ],
+            [
+              40,
+              90
+            ],
+            [
+              40,
+              80
+            ]
+          ],
+          [
+            [
+              40,
+              83
+            ],
+            [
+              43,
+              83
+            ],
+            [
+              43,
+              87
+            ],
+            [
+              40,
+              87
+            ],
+            [
+              40,
+              83
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

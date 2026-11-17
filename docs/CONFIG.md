@@ -78,6 +78,7 @@
 | `rules` | 否 | 规则开关对象；省略时全部启用 |
 | `thresholds` | 否 | 本图层容差覆盖 |
 | `declared_crs` | 否 | 图层声明的 CRS，只含 `name` 和 `type` |
+| `clearance_contract` | 否 | 单面形状的正交净空连通合同，只含 `clearance_width`、`min_core_area`、`usage_contract` |
 
 ### 4.1 路径解析
 
@@ -131,7 +132,7 @@ MultiPolygon
 }
 ```
 
-- 键必须是 19 条已知规则之一，否则 `TOPO-CFG-007`。
+- 键必须是 23 条已知规则之一，否则 `TOPO-CFG-007`。
 - 值必须是只含 `enabled` 布尔字段的对象。
 - 未出现的规则默认启用。
 - 只能关闭规则，不能修改规则严重级别，也不能添加新规则。
@@ -143,6 +144,30 @@ MultiPolygon
 ```
 
 该对象只允许 `name` 和 `type`。当 `name` 或 `type` 与全局 `crs` 不完全一致时，产生图层级 `LAYER_CRS_MISMATCH`。该规则不执行坐标变换。
+
+### 4.6 正交净空合同 `clearance_contract`
+
+```json
+"clearance_contract": {
+  "clearance_width": 0.4,
+  "min_core_area": 25.0,
+  "usage_contract": "access_clearance"
+}
+```
+
+| 字段 | 约束 | 含义 |
+| --- | --- | --- |
+| `clearance_width` | 有限数字，`> 0` | 必须保留的可用通道宽度；侵蚀半宽为其一半 |
+| `min_core_area` | 有限数字，`> 0` | 侵蚀后面积不低于该值的连通分量才计为交付核心 |
+| `usage_contract` | 只能是 `land_compactness` 或 `access_clearance` | 两种独立授权的用途合同 |
+
+对象内不允许未知键，否则 `TOPO-CFG-003`；数值不能是布尔、`NaN` 或 `Infinity`，非正数产生 `TOPO-CFG-006`。省略该字段的图层完全不运行净空裁定，也不产生任何净空类 finding。
+
+语义要点（完整规则见 `docs/RULES.md` 3.3 节）：
+
+- 裁定只对边与坐标轴平行、可证有效的二维 `Polygon`/`MultiPolygon`（可含孔）生效；不满足前提或 `clearance_width <= coordinate_epsilon` 时给出 `CLEARANCE_AUDIT_UNKNOWN`，不伪报通过。
+- 两种合同输出同一份连续平面证据（全局面积/周长比、侵蚀后分量、核心面积、候选颈部与边界见证）；`land_compactness` 只把全局面积/周长比作为交付门禁，窄颈仅以 info 级 `NARROW_NECK_OBSERVATION` 明示；`access_clearance` 额外要求所有足够大的核心在净空后连通，否则给 error 级 `BLOCKING_NARROW_NECK`。
+- 净空门禁不能通过调整 `sliver_ratio` 等价表达，两套阈值相互独立。
 
 ## 5. GeoJSON 输入
 

@@ -1,6 +1,6 @@
 # 矢量拓扑验台（topoaudit）
 
-一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 19 条规则，输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
+一个**完全本地、离线、确定性**的二维矢量数据几何与拓扑质量审计工具。它读取本地 GeoJSON / CSV，按严格配置执行 23 条规则，输出 JSON、Markdown、自包含 HTML 报告和 SQLite 审计台账，并提供只监听回环地址的只读复核页面。
 
 - 项目 slug：`topoaudit`
 - Python：3.10+
@@ -60,7 +60,7 @@ python -m unittest discover -s tests -v
 ```text
 layers / features : 4 / 33
 findings          : 24（error=15, warning=8, info=1）
-覆盖规则           : 19 / 19
+覆盖规则           : 23 / 23
 input_digest      : e3ea9103ea9b01639897200ce167a64d17822b1ac6c796733cd5e49524246b25
 result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f8e73
 ```
@@ -98,7 +98,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 }
 ```
 
-报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 19 条规则及计数；`findings` 是已排序明细；`limitations` 固定记录能力边界。
+报告顶层的 `summary` 提供总数、级别、按规则和按图层计数；`layers` 提供每层要素/几何类型/finding/bbox；`rules` 给出 23 条规则及计数；`findings` 是已排序明细；`limitations` 固定记录能力边界。
 
 ## 4. 配置和输入
 
@@ -145,7 +145,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 ## 5. 规则与严重级别
 
-19 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
+23 条规则的触发条件、证据字段和关闭方式见 [`docs/RULES.md`](docs/RULES.md)。
 
 | 级别 | 含义 |
 | --- | --- |
@@ -158,6 +158,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - 属性与身份：`SCHEMA_MISSING_FIELD`、`SCHEMA_TYPE_MISMATCH`、`DUPLICATE_FEATURE_ID`。
 - 坐标与几何结构：`COORD_NON_FINITE`、`COORD_OUT_OF_BOUNDS`、`GEOM_UNSUPPORTED_TYPE`、`RING_NOT_CLOSED`、`RING_TOO_FEW_POINTS`、`LINE_TOO_FEW_POINTS`、`DUPLICATE_CONSECUTIVE_VERTEX`、`ZERO_LENGTH_SEGMENT`、`SELF_INTERSECTION`。
 - 拓扑与形态：`DUPLICATE_GEOMETRY`、`POLYGON_OVERLAP`、`SLIVER_POLYGON`、`DANGLING_ENDPOINT`、`NEAR_MISS_ENDPOINT`、`LAYER_CRS_MISMATCH`、`EMPTY_LAYER`。
+- 正交净空连通（仅对声明 `clearance_contract` 的图层生效）：`BLOCKING_NARROW_NECK`、`NARROW_NECK_OBSERVATION`、`CLEARANCE_CONNECTIVITY_OK`、`CLEARANCE_AUDIT_UNKNOWN`。
 
 ## 6. 退出码和 findings 语义
 
@@ -229,9 +230,10 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── model.py           # 冻结数据模型
 │   ├── loaders.py         # GeoJSON / CSV 只读加载
 │   ├── geometry_core.py   # 几何谓词
-│   ├── geometry.py        # 面积、环、包含、压盖视图
+│   ├── geometry.py        # 面积、环、包含、压盖视图与正交净空排列
+│   ├── clearance.py       # 连续平面净空连通裁定与证据
 │   ├── normalize.py       # 规范几何签名
-│   ├── rules_catalog.py   # 19 条规则目录和固定级别
+│   ├── rules_catalog.py   # 23 条规则目录和固定级别
 │   ├── findings.py        # finding 构造、去重、排序
 │   ├── rule_schema.py     # 属性规则
 │   ├── rule_geometry.py   # 坐标与几何规则
@@ -259,7 +261,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 - 几何谓词、包含关系（含孔洞）、压盖和规范化。
 - GeoJSON/CSV 加载、文件摘要、非法输入、严格配置错误。
-- 19 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
+- 23 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
 - JSON/Markdown/HTML 报告的确定性、自包含与转义。
 - SQLite 表结构、幂等写入、过滤查询、报告/台账篡改检测。
 - 本机 HTTP 服务的健康检查、页面、JSON 过滤、路径穿越/未知路由拒绝、方法限制和回环绑定。
@@ -285,6 +287,6 @@ python -m unittest discover -s tests -v
 ## 12. 文档索引
 
 - [`docs/CONFIG.md`](docs/CONFIG.md)：配置 schema、默认值、输入格式、错误码。
-- [`docs/RULES.md`](docs/RULES.md)：19 条规则的语义、证据、示例覆盖和限制。
+- [`docs/RULES.md`](docs/RULES.md)：23 条规则的语义、证据、示例覆盖和限制。
 - [`docs/DETERMINISM.md`](docs/DETERMINISM.md)：摘要链、排序、幂等和复现方法。
 - [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)：离线、只读、数据边界和安全合规说明。

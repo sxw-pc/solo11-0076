@@ -1,7 +1,7 @@
 """Per-feature coordinate, structural geometry, and sliver checks."""
 from __future__ import annotations
-import math
 from typing import Any
+from .clearance import STATUS_BLOCKED, STATUS_PASS, STATUS_UNKNOWN, audit_feature_clearance
 from .findings import FindingCollector
 from .geometry import (
     area_perimeter_ratio,
@@ -17,7 +17,7 @@ from .geometry import (
     valid_polygon,
     zero_length_segments,
 )
-from .model import AuditConfig, CRS, Feature, LayerConfig, Tolerance
+from .model import Feature, LayerConfig, Tolerance
 from .util import stable_round
 
 def check_geometry(
@@ -87,6 +87,7 @@ def check_geometry(
     _check_lines(feature, layer, geometry, collector)
     _check_self_intersections(feature, layer, tolerance, geometry, collector)
     _check_slivers(feature, layer, tolerance, geometry, collector)
+    _check_clearance(feature, layer, tolerance, geometry, collector)
 
 def _check_duplicate_vertices(
     feature: Feature,
@@ -254,6 +255,73 @@ def _check_slivers(
                     "threshold": tolerance.sliver_ratio,
                 },
             )
+
+def _check_clearance(
+    feature: Feature,
+    layer: LayerConfig,
+    tolerance: Tolerance,
+    geometry: Any,
+    collector: FindingCollector,
+) -> None:
+    """Contract-scoped, read-only orthogonal clearance connectivity audit.
+
+    The two usage contracts are authorised independently via the layer's
+    ``clearance_contract`` configuration and always emit the same full
+    evidence; only the delivery gate differs.
+    """
+    contract = layer.clearance_contract
+    if contract is None:
+        return
+    parts = polygon_components(geometry)
+    if not parts:
+        return
+    audit = audit_feature_clearance(
+        polygons=parts,
+        clearance_width=contract.clearance_width,
+        min_core_area=contract.min_core_area,
+        usage_contract=contract.usage_contract,
+        epsilon=tolerance.coordinate_epsilon,
+    )
+    base_evidence = {
+        "contract": contract.usage_contract,
+        "clearance_width": stable_round(contract.clearance_width),
+        "min_core_area": stable_round(contract.min_core_area),
+        "status": audit.status,
+        "parts": [part.as_dict() for part in audit.parts],
+        "input_summary": audit.input_summary,
+    }
+    if audit.reason is not None:
+        base_evidence["reason"] = audit.reason
+    if audit.status == STATUS_UNKNOWN:
+        if layer.rule_enabled("CLEARANCE_AUDIT_UNKNOWN"):
+            collector.add(
+                "CLEARANCE_AUDIT_UNKNOWN",
+                layer.layer_id,
+                feature.feature_id,
+                evidence=base_evidence,
+            )
+        return
+    if audit.status == STATUS_BLOCKED:
+        rule_id = (
+            "BLOCKING_NARROW_NECK"
+            if contract.usage_contract == "access_clearance"
+            else "NARROW_NECK_OBSERVATION"
+        )
+        if layer.rule_enabled(rule_id):
+            collector.add(
+                rule_id,
+                layer.layer_id,
+                feature.feature_id,
+                evidence=base_evidence,
+            )
+        return
+    if layer.rule_enabled("CLEARANCE_CONNECTIVITY_OK"):
+        collector.add(
+            "CLEARANCE_CONNECTIVITY_OK",
+            layer.layer_id,
+            feature.feature_id,
+            evidence=base_evidence,
+        )
 
 def _unsupported_reason(feature: Feature, layer: LayerConfig) -> str | None:
     kind = feature.geometry.kind
