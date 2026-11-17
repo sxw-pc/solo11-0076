@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Any
 from .errors import ConfigError
 from .model import (
+    BOUNDARY_POLICIES,
     SUPPORTED_GEOMETRY_TYPES,
     SUPPORTED_SCHEMA_TYPES,
+    AssignmentConfig,
     Bounds,
     CRS,
     DeclaredCRS,
@@ -166,6 +168,94 @@ def _parse_declared_crs(raw: Any, path: str) -> DeclaredCRS | None:
     if kind not in ("planar", "geographic"):
         raise ConfigError("TOPO-CFG-006", "declared_crs.type 必须是 planar 或 geographic", f"{path}.type")
     return DeclaredCRS(name=name, kind=kind)
+def parse_assignment(raw: Any, path: str) -> AssignmentConfig:
+    """Parse the cross-layer assignment precheck block (shape only).
+
+    Cross-references to layers (point/zone layer existence, geometry
+    whitelists, zone id defaulting) are validated by ``config.load_config``
+    once all layers are parsed.
+    """
+    obj = _object(
+        raw,
+        path,
+        {
+            "point_layer",
+            "zone_layer",
+            "zone_id_field",
+            "max_facilities_per_zone",
+            "zone_capacities",
+            "boundary_policy",
+            "anchors",
+        },
+    )
+    point_layer = _nonempty_string(_require(obj, "point_layer", path), f"{path}.point_layer")
+    zone_layer = _nonempty_string(_require(obj, "zone_layer", path), f"{path}.zone_layer")
+    if point_layer == zone_layer:
+        raise ConfigError(
+            "TOPO-CFG-006", "point_layer 与 zone_layer 不能是同一图层", f"{path}.zone_layer"
+        )
+    zone_id_field_raw = obj.get("zone_id_field")
+    zone_id_field = ""
+    if zone_id_field_raw is not None:
+        zone_id_field = _nonempty_string(zone_id_field_raw, f"{path}.zone_id_field")
+    default_capacity = _positive_int(
+        _require(obj, "max_facilities_per_zone", path), f"{path}.max_facilities_per_zone"
+    )
+    zone_capacities = _parse_zone_capacities(obj.get("zone_capacities", {}), f"{path}.zone_capacities")
+    boundary_policy = _string(_require(obj, "boundary_policy", path), f"{path}.boundary_policy")
+    if boundary_policy not in BOUNDARY_POLICIES:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            "boundary_policy 只能是 candidate 或 review",
+            f"{path}.boundary_policy",
+        )
+    anchors = _parse_anchors(_require(obj, "anchors", path), f"{path}.anchors")
+    return AssignmentConfig(
+        point_layer=point_layer,
+        zone_layer=zone_layer,
+        zone_id_field=zone_id_field,
+        max_facilities_per_zone=default_capacity,
+        zone_capacities=zone_capacities,
+        boundary_policy=boundary_policy,
+        anchors=anchors,
+    )
+
+def _parse_zone_capacities(raw: Any, path: str) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        raise ConfigError("TOPO-CFG-004", "zone_capacities 必须是 JSON 对象", path)
+    result: dict[str, int] = {}
+    for key in sorted(raw):
+        if not isinstance(key, str) or not key.strip():
+            raise ConfigError("TOPO-CFG-006", "zone_capacities 的键必须是非空字符串", path)
+        result[key] = _positive_int(raw[key], f"{path}.{key}")
+    return result
+
+def _parse_anchors(raw: Any, path: str) -> dict[str, tuple[float, float]]:
+    if not isinstance(raw, dict):
+        raise ConfigError("TOPO-CFG-004", "anchors 必须是 JSON 对象", path)
+    if not raw:
+        raise ConfigError("TOPO-CFG-006", "anchors 不能为空", path)
+    result: dict[str, tuple[float, float]] = {}
+    for key in sorted(raw):
+        if not isinstance(key, str) or not key.strip():
+            raise ConfigError("TOPO-CFG-006", "anchors 的键必须是非空字符串", path)
+        value = raw[key]
+        item_path = f"{path}.{key}"
+        if not isinstance(value, list) or len(value) != 2:
+            raise ConfigError("TOPO-CFG-004", "锚点必须是 [x, y] 二元数组", item_path)
+        result[key] = (
+            _finite_number(value[0], f"{item_path}[0]"),
+            _finite_number(value[1], f"{item_path}[1]"),
+        )
+    return result
+
+def _positive_int(value: Any, path: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError("TOPO-CFG-004", "字段必须是整数", path)
+    if value < 1:
+        raise ConfigError("TOPO-CFG-006", "字段必须是 >= 1 的整数", path)
+    return value
+
 def _object(raw: Any, path: str, allowed: set[str]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ConfigError("TOPO-CFG-004", "此处必须是 JSON 对象", path)

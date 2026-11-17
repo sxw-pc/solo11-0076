@@ -41,6 +41,7 @@ def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -
         finding_count = _compare_findings(connection, digest, report, issues)
         _compare_inputs(connection, digest, report, issues)
         _compare_rule_catalog(connection, report, issues)
+        _compare_assignment(connection, digest, report, issues)
         _compare_summary(report, issues)
     except sqlite3.Error as exc:
         raise LedgerError("TOPO-LED-005", f"读取台账失败: {exc}", str(ledger_path)) from exc
@@ -180,6 +181,48 @@ def _compare_rule_catalog(
     for rule_id in sorted(ledger):
         if canonical_json(ledger[rule_id]) != canonical_json(reported[rule_id]):
             issues.append(f"规则 {rule_id} 的目录快照不一致")
+def _compare_assignment(
+    connection: sqlite3.Connection, digest: str, report: dict[str, Any], issues: list[str]
+) -> None:
+    row = connection.execute(
+        "SELECT status, payload_json FROM assignment_details WHERE result_digest = ?",
+        (digest,),
+    ).fetchone()
+    reported = report.get("assignment")
+    if reported is None:
+        if row is not None:
+            issues.append("台账存在分配预检记录但报告缺少 assignment 段")
+        return
+    if row is None:
+        issues.append("台账缺少分配预检记录")
+        return
+    try:
+        payload = json.loads(row["payload_json"])
+    except json.JSONDecodeError:
+        issues.append("assignment_details.payload_json 不是有效 JSON")
+        return
+    if canonical_json(payload) != canonical_json(reported):
+        issues.append("台账分配预检内容与报告 assignment 段不一致")
+    plan_rows = connection.execute(
+        "SELECT objective, plan_json FROM assignment_plans WHERE result_digest = ?",
+        (digest,),
+    ).fetchall()
+    ledger_plans = {}
+    for plan_row in plan_rows:
+        try:
+            ledger_plans[plan_row["objective"]] = json.loads(plan_row["plan_json"])
+        except json.JSONDecodeError:
+            issues.append("assignment_plans.plan_json 不是有效 JSON")
+            return
+    reported_plans = {
+        str(plan.get("objective")): plan for plan in reported.get("plans", [])
+    }
+    if set(ledger_plans) != set(reported_plans):
+        issues.append("台账分配方案集合与报告不一致")
+        return
+    for objective in sorted(ledger_plans):
+        if canonical_json(ledger_plans[objective]) != canonical_json(reported_plans[objective]):
+            issues.append(f"分配方案 {objective} 与台账不一致")
 def _compare_summary(report: dict[str, Any], issues: list[str]) -> None:
     summary = report.get("summary", {})
     findings = report.get("findings", [])

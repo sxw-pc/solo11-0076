@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 from .errors import LedgerError, ServerError
-from .ledger_query import get_findings, get_rule_catalog, get_run, list_runs
+from .ledger_query import get_assignment, get_findings, get_rule_catalog, get_run, list_runs
 from .server_pages import render_error, render_index, render_rules, render_run
 from .util import pretty_json
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
@@ -109,7 +109,13 @@ class AuditRequestHandler(BaseHTTPRequestHandler):
             layer_id=filters.get("layer"),
             rule_id=filters.get("rule"),
         )
-        page = render_run(run, findings, get_rule_catalog(self.ledger_path), filters)
+        page = render_run(
+            run,
+            findings,
+            get_rule_catalog(self.ledger_path),
+            filters,
+            assignment=get_assignment(self.ledger_path, digest),
+        )
         self._send_html(200, page, head)
     def _serve_findings(self, digest: str, filters: dict[str, str], head: bool) -> None:
         if get_run(self.ledger_path, digest) is None:

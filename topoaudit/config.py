@@ -1,11 +1,12 @@
 """Strict, path-aware parsing of the JSON audit configuration."""
 from __future__ import annotations
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
-from .config_schema import parse_crs, parse_layer, parse_tolerance
+from .config_schema import parse_assignment, parse_crs, parse_layer, parse_tolerance
 from .errors import ConfigError
-from .model import AuditConfig
+from .model import AssignmentConfig, AuditConfig, LayerConfig
 from .util import canonical_json, sha256_text
 CONFIG_SCHEMA_VERSION = "1.0"
 
@@ -26,7 +27,7 @@ def load_config(path: str | Path) -> AuditConfig:
         raise ConfigError("TOPO-CFG-004", "配置根节点必须是 JSON 对象", "$")
     _reject_unknown(
         raw,
-        {"schema_version", "run_label", "tolerance", "crs", "layers"},
+        {"schema_version", "run_label", "tolerance", "crs", "layers", "assignment"},
         "$",
     )
     schema_version = _require(raw, "schema_version", "$")
@@ -54,6 +55,11 @@ def load_config(path: str | Path) -> AuditConfig:
             )
         seen_ids.add(layer.layer_id)
         layers.append(layer)
+    assignment = None
+    if "assignment" in raw:
+        assignment = _resolve_assignment(
+            parse_assignment(raw["assignment"], "$.assignment"), layers
+        )
     public = {
         "schema_version": CONFIG_SCHEMA_VERSION,
         "run_label": run_label,
@@ -61,6 +67,8 @@ def load_config(path: str | Path) -> AuditConfig:
         "crs": crs.as_dict(),
         "layers": [layer.as_dict() for layer in layers],
     }
+    if assignment is not None:
+        public["assignment"] = assignment.as_dict()
     config_digest = sha256_text(canonical_json(public))
     return AuditConfig(
         path=config_path,
@@ -70,7 +78,44 @@ def load_config(path: str | Path) -> AuditConfig:
         tolerance=tolerance,
         crs=crs,
         layers=tuple(layers),
+        assignment=assignment,
     )
+
+def _resolve_assignment(
+    assignment: AssignmentConfig, layers: list[LayerConfig]
+) -> AssignmentConfig:
+    """Validate the assignment block against the parsed layers."""
+    by_id = {layer.layer_id: layer for layer in layers}
+    point_layer = by_id.get(assignment.point_layer)
+    if point_layer is None:
+        raise ConfigError(
+            "TOPO-CFG-010",
+            f"assignment.point_layer 引用了不存在的图层: {assignment.point_layer}",
+            "$.assignment.point_layer",
+        )
+    zone_layer = by_id.get(assignment.zone_layer)
+    if zone_layer is None:
+        raise ConfigError(
+            "TOPO-CFG-010",
+            f"assignment.zone_layer 引用了不存在的图层: {assignment.zone_layer}",
+            "$.assignment.zone_layer",
+        )
+    if "Point" not in point_layer.geometry_types:
+        raise ConfigError(
+            "TOPO-CFG-010",
+            "assignment.point_layer 的 geometry_types 必须包含 Point",
+            "$.assignment.point_layer",
+        )
+    if not {"Polygon", "MultiPolygon"} & set(zone_layer.geometry_types):
+        raise ConfigError(
+            "TOPO-CFG-010",
+            "assignment.zone_layer 的 geometry_types 必须包含 Polygon 或 MultiPolygon",
+            "$.assignment.zone_layer",
+        )
+    zone_id_field = assignment.zone_id_field or zone_layer.id_field
+    if zone_id_field != assignment.zone_id_field:
+        assignment = replace(assignment, zone_id_field=zone_id_field)
+    return assignment
 def _reject_unknown(raw: dict[str, Any], allowed: set[str], path: str) -> None:
     for key in raw:
         if key not in allowed:

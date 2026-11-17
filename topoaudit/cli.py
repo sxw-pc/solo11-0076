@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 from . import __version__
 from .demo import run_demo
 from .errors import AuditError, LedgerError
-from .ledger_query import get_findings, get_run, list_runs
+from .ledger_query import get_assignment, get_findings, get_run, list_runs
 from .pipeline import execute, render_terminal_summary
 from .server import create_server
 from .util import pretty_json
@@ -129,6 +129,7 @@ def _query(args: argparse.Namespace) -> int:
         layer_id=args.layer,
         rule_id=args.rule,
     )
+    assignment = get_assignment(args.ledger, args.digest)
     if args.json:
         payload = {
             "run": {
@@ -138,12 +139,35 @@ def _query(args: argparse.Namespace) -> int:
             },
             "findings": findings,
         }
+        if assignment is not None:
+            payload["assignment"] = assignment
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     print(
         f"run_label={run['run_label']} digest={run['result_digest']} "
         f"findings={len(findings)}"
     )
+    if assignment is not None:
+        print(
+            f"assignment: status={assignment.get('status')} "
+            f"candidates={assignment.get('input_summary', {}).get('candidate_pairs', 0)}"
+        )
+        for plan in assignment.get("plans", []):
+            metrics = plan.get("metrics", {})
+            print(
+                f"  plan {plan.get('objective')}: assigned={metrics.get('assigned')} "
+                f"unassigned={metrics.get('unassigned')} "
+                f"total_distance={metrics.get('total_distance')} "
+                f"max_load={metrics.get('max_load')} "
+                f"non_dominated={plan.get('non_dominated')}"
+            )
+        blocking = assignment.get("blocking")
+        if blocking:
+            print(
+                f"  blocking: demand={blocking.get('demand')} "
+                f"capacity={blocking.get('total_capacity')} "
+                f"deficit={blocking.get('deficit')}"
+            )
     for finding in findings:
         print(
             f"{finding['severity']:7s} {finding['rule_id']:28s} "

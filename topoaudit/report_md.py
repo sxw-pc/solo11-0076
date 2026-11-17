@@ -2,6 +2,7 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import Any
+from .report_md_assignment import render_assignment_md
 from .util import canonical_json
 
 def render_markdown(report: dict[str, Any]) -> str:
@@ -29,6 +30,9 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.extend(_render_layers(report.get("layers", [])))
     lines.extend(_render_rules(report.get("rules", [])))
     lines.extend(_render_findings(report.get("findings", [])))
+    assignment = report.get("assignment")
+    if assignment is not None:
+        lines.extend(render_assignment_md(assignment))
     lines.extend(_render_inputs(report.get("input_files", [])))
     lines.append("## 限制说明")
     lines.append("")

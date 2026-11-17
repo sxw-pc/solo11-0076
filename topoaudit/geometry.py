@@ -191,3 +191,26 @@ def polygon_components(geometry: Any) -> list[tuple[str, Polygon]]:
             for index, polygon in enumerate(geometry.coordinates)
         ]
     return []
+
+def point_in_zone_components(
+    geometry: Any, point: Point, epsilon: float = 0.0
+) -> tuple[str, Optional[str]]:
+    """Classify a point against every Polygon/MultiPolygon component.
+
+    Returns ``(relation, component)`` where relation is the strongest
+    relation across components (inside > boundary > outside) and component
+    is the label of the first component attaining it.  Points inside a
+    hole are reported as outside by ``point_in_polygon`` and therefore do
+    not produce an inside relation.
+    """
+    best = "outside"
+    best_component: Optional[str] = None
+    rank = {"outside": 0, "boundary": 1, "inside": 2}
+    for label, polygon in polygon_components(geometry):
+        relation = point_in_polygon(polygon, point, epsilon)
+        if rank[relation] > rank[best]:
+            best = relation
+            best_component = label
+        if best == "inside":
+            break
+    return best, best_component

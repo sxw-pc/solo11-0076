@@ -1,7 +1,8 @@
 """HTML rendering for the local read-only audit review server."""
 from __future__ import annotations
 import html
-from typing import Any
+from typing import Any, Optional
+from .server_pages_assignment import render_assignment_page
 from .util import canonical_json
 _CSS = """
 :root { color-scheme: light; --ink:#18232e; --muted:#5c6b78; --line:#d7dddf;
@@ -57,6 +58,7 @@ def render_run(
     findings: list[dict[str, Any]],
     catalog: list[dict[str, Any]],
     filters: dict[str, str],
+    assignment: Optional[dict[str, Any]] = None,
 ) -> str:
     body = [f"<h1>{_e(run.get('run_label', ''))}</h1>"]
     body.append('<nav><a href="/">← 运行列表</a><a href="/rules">规则目录</a></nav>')
@@ -79,6 +81,8 @@ def render_run(
     )
     body.append("</div>")
     body.extend(_layers(run.get("layers", [])))
+    if assignment is not None:
+        body.extend(render_assignment_page(assignment))
     body.extend(_findings(findings, filters))
     body.extend(_catalog(catalog))
     body.append(footer_text())

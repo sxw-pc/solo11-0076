@@ -127,6 +127,40 @@ def _findings_count(connection: Any, digest: str) -> int:
     ).fetchone()
     return int(row["count"])
 
+def get_assignment(path: str | Path, digest: str) -> Optional[dict[str, Any]]:
+    """Return the stored assignment precheck (details + plans) for a run."""
+    connection = connect_ledger(path, read_only=True)
+    try:
+        row = connection.execute(
+            "SELECT status, payload_json FROM assignment_details WHERE result_digest = ?",
+            (digest,),
+        ).fetchone()
+        if row is None:
+            return None
+        result = json.loads(row["payload_json"])
+        plan_rows = connection.execute(
+            """
+            SELECT objective, assigned_count, unassigned_count, total_distance,
+                   max_load, non_dominated
+            FROM assignment_plans WHERE result_digest = ? ORDER BY objective
+            """,
+            (digest,),
+        ).fetchall()
+        result["plan_metrics"] = [
+            {
+                "objective": plan_row["objective"],
+                "assigned": plan_row["assigned_count"],
+                "unassigned": plan_row["unassigned_count"],
+                "total_distance": plan_row["total_distance"],
+                "max_load": plan_row["max_load"],
+                "non_dominated": bool(plan_row["non_dominated"]),
+            }
+            for plan_row in plan_rows
+        ]
+        return result
+    finally:
+        connection.close()
+
 def get_input_files(path: str | Path, digest: str) -> list[dict[str, Any]]:
     connection = connect_ledger(path, read_only=True)
     try:

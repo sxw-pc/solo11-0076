@@ -64,6 +64,29 @@ SCHEMA_STATEMENTS = (
         evidence_fields_json TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS assignment_details (
+        result_digest TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        PRIMARY KEY (result_digest),
+        FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS assignment_plans (
+        result_digest TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        assigned_count INTEGER NOT NULL,
+        unassigned_count INTEGER NOT NULL,
+        total_distance REAL NOT NULL,
+        max_load INTEGER NOT NULL,
+        non_dominated INTEGER NOT NULL,
+        plan_json TEXT NOT NULL,
+        PRIMARY KEY (result_digest, objective),
+        FOREIGN KEY (result_digest) REFERENCES runs(result_digest)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(result_digest, severity)",
     "CREATE INDEX IF NOT EXISTS idx_findings_layer ON findings(result_digest, layer_id)",
     "CREATE INDEX IF NOT EXISTS idx_findings_rule ON findings(result_digest, rule_id)",
@@ -173,6 +196,40 @@ def write_report(path: str | Path, report: dict[str, Any]) -> None:
                         int(item.get("size_bytes", 0)),
                     ),
                 )
+            assignment = report.get("assignment")
+            if assignment is not None:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO assignment_details
+                    (result_digest, status, payload_json)
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        digest,
+                        str(assignment.get("status", "")),
+                        canonical_json(assignment),
+                    ),
+                )
+                for plan in assignment.get("plans", []):
+                    metrics = plan.get("metrics", {})
+                    connection.execute(
+                        """
+                        INSERT OR IGNORE INTO assignment_plans
+                        (result_digest, objective, assigned_count, unassigned_count,
+                         total_distance, max_load, non_dominated, plan_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            digest,
+                            str(plan.get("objective", "")),
+                            int(metrics.get("assigned", 0)),
+                            int(metrics.get("unassigned", 0)),
+                            float(metrics.get("total_distance", 0.0)),
+                            int(metrics.get("max_load", 0)),
+                            1 if plan.get("non_dominated") else 0,
+                            canonical_json(plan),
+                        ),
+                    )
             for row in catalog_rows():
                 connection.execute(
                     """

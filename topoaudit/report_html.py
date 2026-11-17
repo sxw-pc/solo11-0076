@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 from typing import Any
+from .report_html_assignment import render_assignment_html
 from .util import canonical_json
 _CSS = """
 :root { color-scheme: light; --ink:#17202a; --muted:#5d6d7e; --line:#d5dbdb;
@@ -67,6 +68,9 @@ def render_html(report: dict[str, Any]) -> str:
     parts.extend(_layers_html(report.get("layers", [])))
     parts.extend(_rules_html(report.get("rules", [])))
     parts.extend(_findings_html(report.get("findings", [])))
+    assignment = report.get("assignment")
+    if assignment is not None:
+        parts.extend(render_assignment_html(assignment))
     parts.extend(_inputs_html(report.get("input_files", [])))
     parts.append("<h2>限制说明</h2><ul>")
     for item in report.get("limitations", []):

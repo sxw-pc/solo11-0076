@@ -32,8 +32,10 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "input_files": [item.as_dict() for item in result.input_files],
         "limitations": list(result.limitations),
     }
+    if result.assignment is not None:
+        payload["assignment"] = result.assignment
     digest = compute_result_digest(payload)
-    return {
+    report: dict[str, Any] = {
         "schema_version": payload["schema_version"],
         "run_label": payload["run_label"],
         "config_digest": payload["config_digest"],
@@ -46,6 +48,9 @@ def build_report(result: AuditResult) -> dict[str, Any]:
         "input_files": payload["input_files"],
         "limitations": payload["limitations"],
     }
+    if "assignment" in payload:
+        report["assignment"] = payload["assignment"]
+    return report
 
 def compute_result_digest(report: dict[str, Any]) -> str:
     payload = {key: value for key, value in report.items() if key != "result_digest"}

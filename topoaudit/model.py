@@ -103,6 +103,37 @@ class LayerConfig:
         if self.declared_crs is not None:
             result["declared_crs"] = self.declared_crs.as_dict()
         return result
+BOUNDARY_POLICIES = ("candidate", "review")
+ASSIGNMENT_OBJECTIVES = ("min_total_distance", "balance_loads")
+
+@dataclass(frozen=True)
+class AssignmentConfig:
+    """Cross-layer point-to-zone capacitated assignment precheck settings."""
+    point_layer: str
+    zone_layer: str
+    zone_id_field: str
+    max_facilities_per_zone: int
+    zone_capacities: dict[str, int]
+    boundary_policy: str
+    anchors: dict[str, tuple[float, float]]
+    def capacity_for(self, zone_id: str) -> int:
+        return self.zone_capacities.get(zone_id, self.max_facilities_per_zone)
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "point_layer": self.point_layer,
+            "zone_layer": self.zone_layer,
+            "zone_id_field": self.zone_id_field,
+            "max_facilities_per_zone": self.max_facilities_per_zone,
+            "zone_capacities": {
+                key: self.zone_capacities[key] for key in sorted(self.zone_capacities)
+            },
+            "boundary_policy": self.boundary_policy,
+            "anchors": {
+                key: [self.anchors[key][0], self.anchors[key][1]]
+                for key in sorted(self.anchors)
+            },
+        }
+
 @dataclass(frozen=True)
 class AuditConfig:
     path: Path
@@ -112,14 +143,18 @@ class AuditConfig:
     tolerance: Tolerance
     crs: CRS
     layers: tuple[LayerConfig, ...]
+    assignment: Optional[AssignmentConfig] = None
     def as_public_dict(self) -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "schema_version": self.schema_version,
             "run_label": self.run_label,
             "tolerance": self.tolerance.as_dict(),
             "crs": self.crs.as_dict(),
             "layers": [layer.as_dict() for layer in self.layers],
         }
+        if self.assignment is not None:
+            result["assignment"] = self.assignment.as_dict()
+        return result
 @dataclass(frozen=True)
 class Geometry:
     kind: str
@@ -206,6 +241,7 @@ class AuditResult:
     input_digest: str
     summary: dict[str, Any]
     limitations: tuple[str, ...]
+    assignment: Optional[dict[str, Any]] = None
 
 def geometry_type_counts(features: tuple[Feature, ...]) -> dict[str, int]:
     counts: dict[str, int] = {}

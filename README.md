@@ -16,6 +16,7 @@
 - 用固定配置、固定输入得到可比较的 finding 集合和摘要。
 - 通过 SHA-256 摘要、报告和 SQLite 台账留痕，复核一次审计是否可重复。
 - 在完全断网的机器上运行，不依赖 CDN、云 API、远程数据库或第三方 Python 包。
+- 可选地点检点设施能否被责任区唯一接管：空间候选、容量分配、无解证据与两种运营取舍（出勤距离 vs 负载均衡）。
 
 **它不是：**
 
@@ -71,10 +72,10 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 
 | 文件 | 用途 |
 | --- | --- |
-| `report.json` | 确定性机器报告：摘要、图层统计、规则统计、findings、输入摘要、限制说明 |
+| `report.json` | 确定性机器报告：摘要、图层统计、规则统计、findings、输入摘要、限制说明；配置 `assignment` 时含分配预检段 |
 | `report.md` | 人工评审用 Markdown 报告 |
 | `report.html` | 完全自包含、无脚本、无外部资源的 HTML 报告 |
-| `audit.sqlite` | 运行、图层、findings、输入文件、规则目录快照台账 |
+| `audit.sqlite` | 运行、图层、findings、输入文件、规则目录快照台账；含分配预检 `assignment_details` / `assignment_plans` 表 |
 | `inputs.json` | 本次运行的 config/input/result 摘要与文件级 SHA-256 |
 | `summary.txt` | 终端摘要的文本副本 |
 
@@ -142,6 +143,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - CSV 只用于 Point 图层，必须有 `id`、`x`、`y` 及配置中的 `id_field` 列。
 - 每条规则可在图层级用 `{"enabled": false}` 关闭；规则严重级别固定，配置不能修改。
 - 容差可在全局设置，也可在图层 `thresholds` 中覆盖。
+- 可选顶层键 `assignment` 启用点设施 → 责任区容量分配预检：指定点层、区层、区 ID、每区容量上限、边界策略（候选或待核实）和每区服务锚点；详见 [`docs/CONFIG.md`](docs/CONFIG.md) 第 5 节。
 
 ## 5. 规则与严重级别
 
@@ -236,19 +238,26 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── rule_schema.py     # 属性规则
 │   ├── rule_geometry.py   # 坐标与几何规则
 │   ├── rule_topology.py   # 身份、压盖、端点规则
-│   ├── rules.py           # 规则编排
+│   ├── rules.py           # 规则编排与跨层预检入口
+│   ├── assignment.py      # 分配预检编排与结果装配
+│   ├── assignment_inventory.py  # 点/区清单、排除与空间候选
+│   ├── assignment_flow.py # 确定性容量流求解核心
+│   ├── assignment_plans.py# 方案、未分配原因与阻断证据
 │   ├── engine.py          # 端到端审计结果
 │   ├── report_json.py     # 确定性 JSON 与 result_digest
 │   ├── report_md.py       # Markdown 报告
+│   ├── report_md_assignment.py  # Markdown 分配预检段
 │   ├── report_html.py     # 自包含 HTML 报告
+│   ├── report_html_assignment.py # HTML 分配预检段
 │   ├── ledger.py          # SQLite 幂等写入
 │   ├── ledger_query.py    # 只读查询
 │   ├── ledger_verify.py   # 报告/台账交叉核对
 │   ├── pipeline.py        # 输出编排与输入覆盖保护
 │   ├── demo.py            # 合成演示与预期计数核对
 │   ├── server.py          # 回环只读 HTTP 服务
-│   └── server_pages.py    # 自包含复核页面
-└── tests/                 # 7 个 unittest 文件
+│   ├── server_pages.py    # 自包含复核页面
+│   └── server_pages_assignment.py # 复核页分配预检段
+└── tests/                 # 10 个 unittest 文件 + 1 个共享合成数据模块
 ```
 
 `fixtures/demo` 全部为虚构合成数据，不包含真实公司、域名、地址、凭据或个人数据。
@@ -264,12 +273,13 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - SQLite 表结构、幂等写入、过滤查询、报告/台账篡改检测。
 - 本机 HTTP 服务的健康检查、页面、JSON 过滤、路径穿越/未知路由拒绝、方法限制和回环绑定。
 - CLI demo 端到端、fixture 哈希不变、重复运行一致、输出冲突保护、篡改后 `verify` 返回 1。
+- 责任区分配预检：贪心反例（P1 只能去 A、P2 可去 A/B）、责任区洞、边界策略、MultiPolygon 组件、容量无解的阻断证据、锚点距离与负载均衡两条非支配方案、CRS 冲突阻断、输入顺序无关性，以及报告/台账一致性。
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行，生产代码与测试合计在 2500–4500 行之间。
+工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行，生产代码与测试合计在 2500–7000 行之间。
 
 ## 11. 已知限制
 
