@@ -28,7 +28,7 @@ _RULE_ROWS = (
     ("LINE_TOO_FEW_POINTS", "error", "线点数不足", "线组成部分少于 2 个坐标。", "locations,minimum_points"),
     ("DUPLICATE_CONSECUTIVE_VERTEX", "warning", "连续重复顶点", "坐标序列中相邻顶点在容差内重复。", "locations,duplicate_count,coordinate_epsilon"),
     ("ZERO_LENGTH_SEGMENT", "warning", "零长度线段", "线段两端坐标在容差内相等。", "locations,segment_count,coordinate_epsilon"),
-    ("SELF_INTERSECTION", "error", "自相交", "线或环中非相邻线段相交、接触或共线重叠。", "locations,segment_pairs"),
+    ("SELF_INTERSECTION", "error", "自相交", "按图层 line_usage 合同裁定线/环的段对：proper crossing、正长度共线重走、不可判定接触在 boundary_curve 与 route_walk 下均上报；非相邻点触与顶点复访仅在 boundary_curve 下上报。", "usage,coordinate_epsilon,violation_count,pair_count,allowed_shared_endpoint_count,pairs"),
     ("DUPLICATE_FEATURE_ID", "error", "要素 ID 重复", "图层内多个要素使用相同 ID 字段值。", "id_field,value,first_source_index,duplicate_source_index"),
     ("DUPLICATE_GEOMETRY", "warning", "几何重复", "规范坐标序列完全一致。", "geometry_digest,first_source_index,duplicate_source_index,coordinate_epsilon"),
     ("POLYGON_OVERLAP", "error", "多边形压盖", "两个有效多边形内部重叠；仅共边或共点不算。", "pair,component_indexes,bbox_intersection"),

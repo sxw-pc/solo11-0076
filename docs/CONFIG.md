@@ -20,7 +20,7 @@
 
 | 字段 | 默认值 | 约束 | 含义 |
 | --- | ---: | --- | --- |
-| `coordinate_epsilon` | `1e-9` | 有限数字，`> 0` | 坐标相等、顶点重复、线段零长度、环闭合、规范几何量化的容差 |
+| `coordinate_epsilon` | `1e-9` | 有限数字，`> 0` | 坐标相等、顶点重复、线段零长度、环闭合、规范几何量化、自相交段对判定的容差 |
 | `near_miss_distance` | `1.0` | 有限数字，`>= 0` | 不同线端点之间“近接”提示的距离上限，坐标单位 |
 | `sliver_ratio` | `0.1` | 有限数字，`> 0` | 面积/周长比低于该值的有效多边形报告为狭长多边形 |
 
@@ -78,6 +78,7 @@
 | `rules` | 否 | 规则开关对象；省略时全部启用 |
 | `thresholds` | 否 | 本图层容差覆盖 |
 | `declared_crs` | 否 | 图层声明的 CRS，只含 `name` 和 `type` |
+| `line_usage` | 否 | 自相交用途合同：`boundary_curve`（默认）或 `route_walk` |
 
 ### 4.1 路径解析
 
@@ -136,7 +137,19 @@ MultiPolygon
 - 未出现的规则默认启用。
 - 只能关闭规则，不能修改规则严重级别，也不能添加新规则。
 
-### 4.5 图层声明的 CRS
+### 4.5 自相交用途合同 `line_usage`
+
+```json
+"line_usage": "route_walk"
+```
+
+- 可选，取值 `boundary_curve`（默认）或 `route_walk`，其他值报 `TOPO-CFG-006`。
+- `boundary_curve`：线必须保持简单。除相邻/闭合/跨 part 的合法共有端点外，任何段对接触（非相邻点触、顶点复访、穿越、正长度重走、不可判定接触）都构成 `SELF_INTERSECTION`。
+- `route_walk`：允许在已有节点处仅点复访（`shared_endpoint`、`point_touch` 不违规），但 proper crossing、任何正长度重走以及容差附近不可判定的接触仍构成 `SELF_INTERSECTION`。
+- 两种合同都不能通过关闭整条 `SELF_INTERSECTION` 规则模拟：finding 证据会明示 `usage` 与每个被裁定段对的类别。
+- 该合同对线（LineString/MultiLineString，含跨 part 段对）与多边形环统一生效。
+
+### 4.6 图层声明的 CRS
 
 ```json
 "declared_crs": {"name": "LOCAL_XY", "type": "planar"}

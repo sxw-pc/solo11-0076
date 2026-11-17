@@ -21,6 +21,14 @@ SUPPORTED_SCHEMA_TYPES = (
 )
 SEVERITIES = ("error", "warning", "info")
 SEVERITY_RANK = {"error": 0, "warning": 1, "info": 2}
+# Self-intersection usage contracts a layer can explicitly authorize.
+# ``boundary_curve``: lines must stay simple; any non-adjacent point touch is
+# already a SELF_INTERSECTION.  ``route_walk``: point-only revisits at existing
+# vertices are allowed, but proper crossings and positive-length retraces are
+# still reported.  Neither contract can be emulated by switching the whole
+# SELF_INTERSECTION rule off.
+LINE_USAGES = ("boundary_curve", "route_walk")
+DEFAULT_LINE_USAGE = "boundary_curve"
 @dataclass(frozen=True)
 class Bounds:
     min_x: float
@@ -80,6 +88,7 @@ class LayerConfig:
     rules: dict[str, bool]
     threshold_overrides: dict[str, float]
     declared_crs: Optional[DeclaredCRS]
+    line_usage: str = DEFAULT_LINE_USAGE
     def rule_enabled(self, rule_id: str) -> bool:
         return self.rules.get(rule_id, True)
     def effective_tolerance(self, base: Tolerance) -> Tolerance:
@@ -99,6 +108,7 @@ class LayerConfig:
                 k: self.threshold_overrides[k]
                 for k in sorted(self.threshold_overrides)
             },
+            "line_usage": self.line_usage,
         }
         if self.declared_crs is not None:
             result["declared_crs"] = self.declared_crs.as_dict()

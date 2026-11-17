@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional, Sequence
 from .geometry_core import (
     Point,
+    classify_segment_pair,
     consecutive_duplicates,
     cross,
     distance,
@@ -10,7 +11,9 @@ from .geometry_core import (
     is_finite_number,
     is_finite_point,
     iter_numeric_points,
+    line_segment_contacts,
     line_self_intersections,
+    nonzero_segments,
     orientation,
     point_on_segment,
     points_close,

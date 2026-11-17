@@ -48,6 +48,8 @@ class GeometryTest(unittest.TestCase):
         self.assertTrue(line_self_intersections(bow, False, 0))
         square = ((0, 0), (2, 0), (2, 2), (0, 2), (0, 0))
         self.assertEqual(line_self_intersections(square, True, 0), [])
+        retrace = ((0, 0), (2, 0), (1, 0))
+        self.assertEqual(line_self_intersections(retrace, False, 0), [(0, 1)])
     def test_point_in_polygon_and_holes(self):
         self.assertEqual(point_location(SQUARE[0], (5, 5)), "inside")
         self.assertEqual(point_location(SQUARE[0], (0, 5)), "boundary")

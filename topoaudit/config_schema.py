@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from .errors import ConfigError
 from .model import (
+    DEFAULT_LINE_USAGE,
+    LINE_USAGES,
     SUPPORTED_GEOMETRY_TYPES,
     SUPPORTED_SCHEMA_TYPES,
     Bounds,
@@ -71,6 +73,7 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
         "rules",
         "thresholds",
         "declared_crs",
+        "line_usage",
     }
     obj = _object(raw, path, allowed)
     layer_id = _nonempty_string(_require(obj, "id", path), f"{path}.id")
@@ -101,6 +104,7 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
     rules = _parse_rules(obj.get("rules", {}), f"{path}.rules")
     thresholds = _parse_layer_thresholds(obj.get("thresholds", {}), f"{path}.thresholds")
     declared = _parse_declared_crs(obj.get("declared_crs"), f"{path}.declared_crs")
+    line_usage = _parse_line_usage(obj.get("line_usage"), f"{path}.line_usage")
     return LayerConfig(
         layer_id=layer_id,
         path=source,
@@ -112,7 +116,19 @@ def parse_layer(raw: Any, path: str, base_dir: Path) -> LayerConfig:
         rules=rules,
         threshold_overrides=thresholds,
         declared_crs=declared,
+        line_usage=line_usage,
     )
+def _parse_line_usage(raw: Any, path: str) -> str:
+    if raw is None:
+        return DEFAULT_LINE_USAGE
+    value = _string(raw, path)
+    if value not in LINE_USAGES:
+        raise ConfigError(
+            "TOPO-CFG-006",
+            f"line_usage 只能是 {' 或 '.join(LINE_USAGES)}",
+            path,
+        )
+    return value
 def _parse_schema(raw: Any, path: str) -> dict[str, FieldSpec]:
     if not isinstance(raw, dict):
         raise ConfigError("TOPO-CFG-004", "schema 必须是 JSON 对象", path)

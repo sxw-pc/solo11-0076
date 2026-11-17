@@ -27,7 +27,7 @@
 | 8 | `LINE_TOO_FEW_POINTS` | error | 任一线组成部分坐标数少于 2 | `locations`、`minimum_points` |
 | 9 | `DUPLICATE_CONSECUTIVE_VERTEX` | warning | 相邻顶点在 `coordinate_epsilon` 内重复 | `locations`、`duplicate_count`、`coordinate_epsilon` |
 | 10 | `ZERO_LENGTH_SEGMENT` | warning | 线段两端在 `coordinate_epsilon` 内相等 | `locations`、`segment_count`、`coordinate_epsilon` |
-| 11 | `SELF_INTERSECTION` | error | 线或环的非相邻线段相交、接触或共线重叠 | `locations`、`segment_pairs` |
+| 11 | `SELF_INTERSECTION` | error | 按 `line_usage` 合同裁定段对：穿越、正长度重走、不可判定接触均上报；非相邻点触仅 `boundary_curve` 上报 | `usage`、`violation_count`、`pair_count`、`allowed_shared_endpoint_count`、`pairs` |
 | 12 | `DUPLICATE_FEATURE_ID` | error | 同一图层多个要素的 ID 字段字符串值相同 | `id_field`、`value`、首末 `source_index` |
 | 13 | `DUPLICATE_GEOMETRY` | warning | 规范几何签名完全相同 | `geometry_digest`、首末 `source_index`、`coordinate_epsilon` |
 | 14 | `POLYGON_OVERLAP` | error | 两个不同要素的有效多边形内部重叠 | `pair`、`component_indexes`、`bbox_intersection` |
@@ -92,14 +92,19 @@ LineString 或 MultiLineString 的任一组组成部分少于 2 个坐标。位�
 
 **`SELF_INTERSECTION`**
 
-对有效长度线段两两检查：
+按图层 `line_usage` 用途合同，对同一要素内所有非零长度线段两两分类（含同一 part 内、闭合首尾对、以及同一 MultiLineString 的不同 part 之间）：
 
-- 跳过同一序列中的相邻线段；
-- 对闭合线/环，额外跳过首尾相邻的一对线段；
-- 相交、端点在另一线段上、共线重叠均算自相交；
-- 零长度线段先被排除，避免虚假的相邻关系。
+- 段对交集类别：`shared_endpoint`（仅共享合法端点）、`point_touch`（其他点相触）、`proper_crossing`（内部穿越）、`collinear_overlap`（正长度共线重叠/重走）、`undecidable`（容差附近无法稳定区分点触与正长度重叠）。
+- 相邻段同样检查是否重走超过共有顶点；闭合线/环的首尾共有端点不自动等同于重走，但首尾段的共线重叠仍上报。
+- 零长度段不参与段对（由 `ZERO_LENGTH_SEGMENT` 单独报告），但不会因此跳过其余段对的实质相交检查。
+- 跨 part 段对在证据中以 `parts` 同时定位两个 part 与各自的 segment index，不归入任一 part 内部。
 
-一条 finding 聚合该要素的多个位置和线段对。
+用途合同（不能通过关闭整条规则模拟）：
+
+- `boundary_curve`（默认）：线必须保持简单；`proper_crossing`、`collinear_overlap`、`point_touch`、非相邻 `shared_endpoint`（顶点复访）、`undecidable` 均构成违规。
+- `route_walk`：允许在已有节点处仅点复访（`shared_endpoint`、`point_touch` 不违规），但 `proper_crossing`、任何正长度重走及 `undecidable` 仍违规。
+
+`undecidable` 在两种用途下都违规：交集不明时不能把要素标为已证无自交。证据包含 `usage`、`violation_count`、`pair_count`、`allowed_shared_endpoint_count` 和每个被裁定段对的 `pairs`（`parts`、`segment_indexes`、`relationship`、`category`、`violation`、`detail`）。一条 finding 聚合该要素的全部违规段对。
 
 ### 3.3 身份和全局几何规则
 

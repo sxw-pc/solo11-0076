@@ -142,6 +142,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - CSV 只用于 Point 图层，必须有 `id`、`x`、`y` 及配置中的 `id_field` 列。
 - 每条规则可在图层级用 `{"enabled": false}` 关闭；规则严重级别固定，配置不能修改。
 - 容差可在全局设置，也可在图层 `thresholds` 中覆盖。
+- 图层 `line_usage` 选择自相交用途合同：`boundary_curve`（默认，线保持简单）或 `route_walk`（允许节点处仅点复访，穿越与正长度重走仍报）。
 
 ## 5. 规则与严重级别
 
