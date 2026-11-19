@@ -209,6 +209,8 @@ severity_rank, rule_id, layer_id, COALESCE(feature_id, ''), finding_id
 - 新摘要是一组新运行，不会与旧运行混行；
 - `rule_catalog` 是全局表，会保持为当前代码目录的快照。
 
+台账另含 `publish_log` 表：发布管线把 `ledger_committed` 事件与上述运行行放在**同一事务**提交，随后的 `verified`、`published`、`recovery_rollback` 事件各自成事务追加。该表是发布决定的可恢复持久证据，使同输入重跑不追加不一致记录、中断恢复可按日志重放；完整协议见 [`PUBLISHING.md`](PUBLISHING.md)。
+
 ## 7. `verify` 的核对范围
 
 `python -m topoaudit verify --report ... --ledger ...` 会：

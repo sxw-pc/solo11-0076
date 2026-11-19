@@ -162,3 +162,86 @@ def get_rule_catalog(path: str | Path) -> list[dict[str, Any]]:
         ]
     finally:
         connection.close()
+
+def get_publish_log(path: str | Path, digest: Optional[str] = None) -> list[dict[str, Any]]:
+    """Return publish-log events in commit order.
+
+    Tolerates ledgers written before the publish log existed and missing
+    ledger files, so recovery can always ask "what was decided so far?".
+    """
+    ledger_path = Path(path)
+    if not ledger_path.is_file():
+        return []
+    connection = connect_ledger(ledger_path, read_only=True)
+    try:
+        table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'publish_log'"
+        ).fetchone()
+        if table is None:
+            return []
+        if digest is None:
+            rows = connection.execute(
+                "SELECT seq, result_digest, event, detail_json FROM publish_log ORDER BY seq"
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                "SELECT seq, result_digest, event, detail_json FROM publish_log "
+                "WHERE result_digest = ? ORDER BY seq",
+                (digest,),
+            ).fetchall()
+        return [
+            {
+                "seq": int(row["seq"]),
+                "result_digest": row["result_digest"],
+                "event": row["event"],
+                "detail": json.loads(row["detail_json"]),
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+def latest_published_digest(path: str | Path) -> Optional[str]:
+    """Digest of the most recent ``published`` event, if any."""
+    latest: Optional[str] = None
+    for row in get_publish_log(path):
+        if row["event"] == "published":
+            latest = row["result_digest"]
+    return latest
+
+def was_published(path: str | Path, digest: str) -> bool:
+    """True when the digest has any ``published`` event in the log."""
+    return any(row["event"] == "published" for row in get_publish_log(path, digest))
+
+def committed_intent_files(path: str | Path, digest: str) -> Optional[dict[str, Any]]:
+    """Per-file SHA-256 map recorded by the latest ``ledger_committed`` event."""
+    for row in reversed(get_publish_log(path, digest)):
+        if row["event"] == "ledger_committed":
+            files = row["detail"].get("files")
+            if isinstance(files, dict):
+                return files
+    return None
+
+def events_by_digest(path: str | Path) -> dict[str, list[dict[str, Any]]]:
+    """All publish-log events grouped by digest, each list in commit order."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in get_publish_log(path):
+        grouped.setdefault(row["result_digest"], []).append(row)
+    return grouped
+
+def session_state(events: list[dict[str, Any]]) -> str:
+    """Reduce a digest's publish-log history to its current session state."""
+    state = "none"
+    for row in events:
+        event = row["event"]
+        if event == "ledger_committed":
+            state = "ledger_committed"
+        elif event == "verified" and state == "ledger_committed":
+            state = "verified"
+        elif event == "verification_failed" and state in ("ledger_committed", "verified"):
+            state = "verification_failed"
+        elif event == "published":
+            state = "published"
+        elif event == "recovery_rollback":
+            state = "recovery_rollback"
+    return state

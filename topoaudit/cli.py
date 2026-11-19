@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Optional, Sequence
 from . import __version__
 from .demo import run_demo
-from .errors import AuditError, LedgerError
+from .errors import AuditError, LedgerError, ReportError
 from .ledger_query import get_findings, get_run, list_runs
 from .pipeline import execute, render_terminal_summary
 from .server import create_server
@@ -24,6 +25,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--out", required=True, help="输出目录")
     demo_parser = sub.add_parser("demo", help="运行内置离线演示")
     demo_parser.add_argument("--out", required=True, help="演示输出目录")
+    recover_parser = sub.add_parser("recover", help="恢复输出目录中中断的发布会话")
+    recover_parser.add_argument("--out", required=True, help="输出目录")
+    recover_parser.add_argument(
+        "--policy",
+        choices=("roll-forward", "rollback"),
+        default=None,
+        help="台账已提交但当前版本未切换时的恢复路线；默认 roll-forward",
+    )
     verify_parser = sub.add_parser("verify", help="核对报告与 SQLite 台账")
     verify_parser.add_argument("--report", required=True, help="report.json 路径")
     verify_parser.add_argument("--ledger", required=True, help="audit.sqlite 路径")
@@ -51,6 +60,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return _run(args)
         if args.command == "demo":
             return _demo(args)
+        if args.command == "recover":
+            return _recover(args)
         if args.command == "verify":
             return _verify(args)
         if args.command == "serve":
@@ -66,7 +77,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.print_help()
     return 2
 def _run(args: argparse.Namespace) -> int:
-    report, paths = execute(args.config, args.out)
+    report, paths = execute(args.config, args.out, on_recovery=_print_recovery)
     print(render_terminal_summary(report, paths))
     return 0
 def _demo(args: argparse.Namespace) -> int:
@@ -74,6 +85,25 @@ def _demo(args: argparse.Namespace) -> int:
     print(render_terminal_summary(report, paths))
     expected_label = expected.get("label", "expected_summary")
     print(f"fixture 预期计数核对通过: {expected_label}")
+    return 0
+def _print_recovery(action) -> None:
+    print(
+        f"恢复: {action.action} digest={action.digest} reason={action.reason}",
+        file=sys.stderr,
+    )
+def _recover(args: argparse.Namespace) -> int:
+    from .publish import current_digest, recover_pending
+    out = Path(args.out)
+    if not out.is_dir():
+        raise ReportError("TOPO-RPT-008", "输出目录不存在，无法恢复", str(out))
+    actions = recover_pending(out, policy=args.policy)
+    if not actions:
+        print("没有待恢复的发布会话。")
+    else:
+        for action in actions:
+            print(f"{action.action}: digest={action.digest} reason={action.reason}")
+    current = current_digest(out)
+    print(f"当前结果: {current if current else '(无)'}")
     return 0
 def _verify(args: argparse.Namespace) -> int:
     from .ledger_verify import verify_report_and_ledger

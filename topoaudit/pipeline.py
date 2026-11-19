@@ -1,23 +1,47 @@
 """Shared run pipeline used by the CLI and the offline demo."""
 from __future__ import annotations
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Optional
 from .config import load_config
 from .engine import run_audit
 from .errors import ReportError
-from .ledger import write_report
-from .report_html import write_report_html
-from .report_json import build_report, write_report_json
-from .report_md import write_report_markdown
+from .publish import (
+    CURRENT_LINK,
+    LEDGER_DB_NAME,
+    MANIFEST_NAME,
+    REPORT_FILE_NAMES,
+    RecoveryAction,
+    publish_run,
+    recover_pending,
+    staging_dir,
+    version_dir,
+)
+from .report_html import render_html
+from .report_json import build_report
+from .report_md import render_markdown
 from .util import pretty_json
 REPORT_JSON = "report.json"
 REPORT_MD = "report.md"
 REPORT_HTML = "report.html"
-LEDGER_DB = "audit.sqlite"
+LEDGER_DB = LEDGER_DB_NAME
 INPUTS_JSON = "inputs.json"
 SUMMARY_TXT = "summary.txt"
 
-def execute(config_path: str | Path, out_dir: str | Path) -> tuple[dict[str, Any], dict[str, Path]]:
+def execute(
+    config_path: str | Path,
+    out_dir: str | Path,
+    *,
+    recovery_policy: Optional[str] = None,
+    on_recovery: Optional[Callable[[RecoveryAction], None]] = None,
+) -> tuple[dict[str, Any], dict[str, Path]]:
+    """Run an audit and atomically publish it as the output's current result.
+
+    Any interrupted earlier publish session in ``out_dir`` is settled first
+    (see :mod:`topoaudit.publish`); the previously published version stays
+    fully readable until the new one is completely staged, recorded in the
+    ledger and verified.
+    """
     config = load_config(config_path)
     result = run_audit(config)
     report = build_report(result)
@@ -31,12 +55,16 @@ def execute(config_path: str | Path, out_dir: str | Path) -> tuple[dict[str, Any
         "inputs": destination / INPUTS_JSON,
         "summary": destination / SUMMARY_TXT,
     }
-    _refuse_input_overwrite(config, paths)
-    write_report_json(paths["json"], report)
-    write_report_markdown(paths["markdown"], report)
-    write_report_html(paths["html"], report)
-    paths["inputs"].write_text(
-        pretty_json(
+    _refuse_input_overwrite(config, destination, report["result_digest"])
+    actions = recover_pending(destination, policy=recovery_policy)
+    if on_recovery is not None:
+        for action in actions:
+            on_recovery(action)
+    file_contents = {
+        REPORT_JSON: pretty_json(report),
+        REPORT_MD: render_markdown(report),
+        REPORT_HTML: render_html(report),
+        INPUTS_JSON: pretty_json(
             {
                 "config_digest": report["config_digest"],
                 "input_digest": report["input_digest"],
@@ -44,18 +72,29 @@ def execute(config_path: str | Path, out_dir: str | Path) -> tuple[dict[str, Any
                 "input_files": report["input_files"],
             }
         ),
-        encoding="utf-8",
-    )
-    paths["summary"].write_text(render_terminal_summary(report, paths), encoding="utf-8")
-    write_report(paths["ledger"], report)
+        SUMMARY_TXT: render_terminal_summary(report, paths),
+    }
+    publish_run(destination, report, file_contents)
     return report, paths
 
-def _refuse_input_overwrite(config: Any, paths: dict[str, Path]) -> None:
-    protected = {config.path.resolve()} | {
+def _refuse_input_overwrite(config: Any, destination: Path, digest: str) -> None:
+    protected_resolved = {config.path.resolve()} | {
         layer.resolved_path.resolve() for layer in config.layers
     }
-    for target in paths.values():
-        if target.resolve() in protected:
+    protected_absolute = {
+        Path(os.path.abspath(str(config.path))),
+        *[Path(os.path.abspath(str(layer.resolved_path))) for layer in config.layers],
+    }
+    targets = [destination / name for name in REPORT_FILE_NAMES]
+    targets.append(destination / LEDGER_DB)
+    targets.append(destination / CURRENT_LINK)
+    for directory in (staging_dir(destination, digest), version_dir(destination, digest)):
+        targets.extend(directory / name for name in REPORT_FILE_NAMES)
+        targets.append(directory / MANIFEST_NAME)
+    for target in targets:
+        if target.resolve() in protected_resolved or Path(
+            os.path.abspath(str(target))
+        ) in protected_absolute:
             raise ReportError(
                 "TOPO-RPT-004",
                 "输出文件与输入或配置文件路径冲突，拒绝覆盖",

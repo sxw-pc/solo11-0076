@@ -18,7 +18,7 @@ class VerificationResult:
     layer_count: int = 0
 
 def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -> VerificationResult:
-    report = _load_report(Path(report_path))
+    report = load_report(Path(report_path))
     digest = str(report.get("result_digest", ""))
     issues: list[str] = []
     if not digest:
@@ -53,7 +53,8 @@ def verify_report_and_ledger(report_path: str | Path, ledger_path: str | Path) -
         finding_count=finding_count,
         layer_count=layer_count,
     )
-def _load_report(path: Path) -> dict[str, Any]:
+def load_report(path: Path) -> dict[str, Any]:
+    """Load and minimally validate a JSON report file."""
     if not path.is_file():
         raise ReportError("TOPO-RPT-001", "报告文件不存在", str(path))
     try:
@@ -63,6 +64,7 @@ def _load_report(path: Path) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ReportError("TOPO-RPT-003", "报告根节点必须是 JSON 对象", str(path))
     return raw
+_load_report = load_report
 def _compare_run(report: dict[str, Any], row: sqlite3.Row) -> list[str]:
     issues: list[str] = []
     fields = {

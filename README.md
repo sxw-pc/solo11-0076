@@ -47,11 +47,14 @@ python -m topoaudit query --ledger build/demo/audit.sqlite
 python -m topoaudit query --ledger build/demo/audit.sqlite \
   --digest <result_digest> --severity error --json
 
-# 5) 启动只读本地复核服务
+# 5) 恢复输出目录中中断的发布（如有）
+python -m topoaudit recover --out build/run
+
+# 6) 启动只读本地复核服务
 python -m topoaudit serve --ledger build/demo/audit.sqlite \
   --host 127.0.0.1 --port 8765
 
-# 6) 运行全部测试
+# 7) 运行全部测试
 python -m unittest discover -s tests -v
 ```
 
@@ -74,9 +77,11 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 | `report.json` | 确定性机器报告：摘要、图层统计、规则统计、findings、输入摘要、限制说明 |
 | `report.md` | 人工评审用 Markdown 报告 |
 | `report.html` | 完全自包含、无脚本、无外部资源的 HTML 报告 |
-| `audit.sqlite` | 运行、图层、findings、输入文件、规则目录快照台账 |
+| `audit.sqlite` | 运行、图层、findings、输入文件、规则目录快照台账，以及 `publish_log` 发布日志 |
 | `inputs.json` | 本次运行的 config/input/result 摘要与文件级 SHA-256 |
 | `summary.txt` | 终端摘要的文本副本 |
+
+上述 5 个报告文件是经 `current/` 的相对符号链接；实际内容存放在 `versions/<result_digest>/`（含记录各文件 SHA-256 的 `manifest.json`）。发布会先把新结果写入 `.staging/` 暂存区，台账行与发布意向在同一 SQLite 事务提交，全部产物验证通过后才原子切换 `current` 指针——复核人员任何时刻看到的都是完整的一版。中断的发布由 `run` 自动恢复，或用 `python -m topoaudit recover --out <目录>` 显式恢复；协议、故障切点与恢复策略详见 [`docs/PUBLISHING.md`](docs/PUBLISHING.md)。
 
 台账以 `result_digest` 为运行主键。相同报告重复写入不会产生重复的 run、layer 或 finding；不同摘要会成为新运行。报告中的 `result_digest` 在写台账前会被重新计算，不一致时拒绝写入。
 
@@ -197,7 +202,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - 页面和报告内联样式，无脚本、无外部字体/图片；响应带有严格 CSP、`nosniff`、`no-referrer`、`no-store`。
 - SQLite 复核查询使用只读连接和 `PRAGMA query_only`。
 - 输入文件只以只读方式读取。`run`/`demo` 在写报告前拒绝与配置或输入文件路径冲突的输出目标；`demo` 额外拒绝把输出写入 `fixtures/demo`。
-- 输出目录由调用者显式指定。已有同名报告会被更新；需要保留旧结果时请使用新的 `--out` 目录。
+- 输出目录由调用者显式指定。同一目录反复运行时，只有完整验证过的新版本才会经 `current` 指针原子成为当前结果；已发布版本保留在 `versions/<result_digest>/` 中可随时复核，不会被后续运行覆盖或删除。
 
 复核服务没有认证、用户隔离或公网加固，只应在可信本机、受控网络和授权数据上使用。
 
@@ -211,6 +216,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── CONFIG.md
 │   ├── RULES.md
 │   ├── DETERMINISM.md
+│   ├── PUBLISHING.md
 │   └── COMPLIANCE.md
 ├── fixtures/demo/
 │   ├── config.json
@@ -222,7 +228,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 ├── topoaudit/
 │   ├── __init__.py        # 版本与 schema 版本
 │   ├── __main__.py        # python -m topoaudit 入口
-│   ├── cli.py             # run/demo/verify/serve/query
+│   ├── cli.py             # run/demo/recover/verify/serve/query
 │   ├── config.py          # 严格配置加载与 config_digest
 │   ├── config_schema.py   # 嵌套配置校验
 │   ├── errors.py          # 稳定错误码
@@ -241,14 +247,19 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 │   ├── report_json.py     # 确定性 JSON 与 result_digest
 │   ├── report_md.py       # Markdown 报告
 │   ├── report_html.py     # 自包含 HTML 报告
-│   ├── ledger.py          # SQLite 幂等写入
-│   ├── ledger_query.py    # 只读查询
+│   ├── ledger.py          # SQLite 幂等写入与发布日志
+│   ├── ledger_query.py    # 只读查询与发布日志读取
 │   ├── ledger_verify.py   # 报告/台账交叉核对
+│   ├── publish_layout.py  # 版本目录布局与原子写原语
+│   ├── publish_verify.py  # 发布前候选版本全量校验
+│   ├── publish_recover.py # 中断发布会话的恢复
+│   ├── publish_legacy.py  # 旧扁平输出布局收编
+│   ├── publish.py         # 暂存→台账→验证→切换的发布编排
 │   ├── pipeline.py        # 输出编排与输入覆盖保护
 │   ├── demo.py            # 合成演示与预期计数核对
 │   ├── server.py          # 回环只读 HTTP 服务
 │   └── server_pages.py    # 自包含复核页面
-└── tests/                 # 7 个 unittest 文件
+└── tests/                 # 8 个 unittest 文件
 ```
 
 `fixtures/demo` 全部为虚构合成数据，不包含真实公司、域名、地址、凭据或个人数据。
@@ -262,6 +273,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 - 19 条规则的触发、计数、稳定 ID、顺序无关性、规则开关和严重级别。
 - JSON/Markdown/HTML 报告的确定性、自包含与转义。
 - SQLite 表结构、幂等写入、过滤查询、报告/台账篡改检测。
+- 发布与恢复：三个故障切点（部分报告、报告齐但台账未提交、台账已提交但指针未切换）的中断演练、前滚/回滚两条恢复路线、同输入重跑幂等、旧版本可复核、旧布局收编。
 - 本机 HTTP 服务的健康检查、页面、JSON 过滤、路径穿越/未知路由拒绝、方法限制和回环绑定。
 - CLI demo 端到端、fixture 哈希不变、重复运行一致、输出冲突保护、篡改后 `verify` 返回 1。
 
@@ -269,7 +281,7 @@ result_digest     : 06af7bfbbb945a80484d52eaf809f1ca20e664469eb4890ce49d10b7d40f
 python -m unittest discover -s tests -v
 ```
 
-工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行，生产代码与测试合计在 2500–4500 行之间。
+工程约束：全部 `.py` 文件均为标准库实现，单文件不超过 300 行。
 
 ## 11. 已知限制
 
@@ -287,4 +299,5 @@ python -m unittest discover -s tests -v
 - [`docs/CONFIG.md`](docs/CONFIG.md)：配置 schema、默认值、输入格式、错误码。
 - [`docs/RULES.md`](docs/RULES.md)：19 条规则的语义、证据、示例覆盖和限制。
 - [`docs/DETERMINISM.md`](docs/DETERMINISM.md)：摘要链、排序、幂等和复现方法。
+- [`docs/PUBLISHING.md`](docs/PUBLISHING.md)：原子发布协议、故障切点、恢复策略与证据。
 - [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)：离线、只读、数据边界和安全合规说明。
